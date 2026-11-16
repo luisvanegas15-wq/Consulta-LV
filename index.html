@@ -87,6 +87,9 @@ a.dircard{display:block;color:inherit;text-decoration:none}
 .wrap.pub{max-width:920px}
 .pub-barra{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-radius:14px;padding:8px 10px;margin:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:13px;line-height:1.3}
 .pub-barra small{color:var(--sub)}
+.cg-bloq{position:absolute;left:0;right:0;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);border-radius:6px;z-index:1;cursor:pointer;overflow:hidden}
+.cg-bloq span{display:block;position:sticky;top:0;background:rgba(241,245,249,.9);font-size:11px;font-weight:700;color:#475569;padding:3px 5px}
+.mes td button.fest{color:#dc2626}
 .pub-barra .btn{white-space:nowrap;flex-shrink:0}
 .reserva-l{display:grid;gap:12px}@media(min-width:760px){.reserva-l{grid-template-columns:330px minmax(0,1fr);align-items:start}}
 .pmes td button{width:38px;height:38px;font-size:14px}
@@ -185,7 +188,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.2.2';
+const VERSION = '3.3';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -646,7 +649,7 @@ async function vistaInicio(){
     [!!(p.nombre && p.slug), 'Completa tu perfil y tu enlace de reservas', "irA('perfil')"],
     [!!fotoSegura(p.foto_url), 'Sube tu foto profesional', "irA('perfil')"],
     [(sv.data || []).length > 0, 'Crea al menos un servicio', "irA('servicios')"],
-    [(di.data || []).length > 0, 'Define tu horario de atención', "irA('horarios')"],
+    [S.prof.horario_auto === true || (di.data || []).length > 0, 'Define tu horario de atención', "irA('horarios')"],
     [!!ll.data, 'Protege tus historias con tu clave clínica', "irA('pacientes')"]];
   const hechos = pasos.filter(x => x[0]).length;
   let h = '';
@@ -712,12 +715,13 @@ async function vistaAgenda(){
 async function cargarAgenda(){
   const dias = diasVista(), g0 = lunes(A.mes + '-01'), g1 = sumarDias(g0, 42);
   const desde = [dias[0], g0].sort()[0], hasta = [sumarDias(dias[dias.length - 1], 1), g1].sort()[1];
-  const [c, d] = await Promise.all([
+  const [c, d, b] = await Promise.all([
     sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,recordatorio_at,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', desde + 'T00:00:00-05:00').lt('inicio', hasta + 'T00:00:00-05:00').order('inicio', { ascending: true }),
-    sb.from('disponibilidad').select('dia,hora_inicio,hora_fin')]);
+    sb.from('disponibilidad').select('dia,hora_inicio,hora_fin'),
+    sb.from('bloqueos').select('*').lt('inicio', hasta + 'T00:00:00-05:00').gte('fin', desde + 'T00:00:00-05:00')]);
   if (c.error || d.error) { const box = $('ag-cen'); if (box) box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || d.error))}</div>`; return; }
-  A.citas = c.data || []; A.disp = d.data || [];
+  A.citas = c.data || []; A.disp = d.data || []; A.bloq = b.error ? [] : (b.data || []);
   pintarAgenda();
 }
 function pintarAgenda(){
@@ -735,6 +739,7 @@ function pintarAgenda(){
     <button class="btn sm ghost" onclick="moverAgenda(-1)">‹</button><button class="btn sm ghost" onclick="moverAgenda(1)">›</button>
     <b class="cal-t">${esc(titulo)}</b>
     <div class="tabs mini-tabs">${[['dia','Día'],['semana','Semana'],['lista','Lista']].map(m => `<button class="${A.modo===m[0]?'on':''}" onclick="cambiarModo('${m[0]}')">${m[1]}</button>`).join('')}</div>
+    <button class="btn sm ghost" onclick="formBloqueo({fecha:A.fecha})" title="Marcar no disponible">🚫</button>
     <button class="btn sm" onclick="formCita({fecha:A.fecha})">+ Cita</button>
   </div>${A.modo === 'lista' ? htmlLista() : htmlGrid()}</div>`;
   if (A.modo !== 'lista') {
@@ -742,7 +747,7 @@ function pintarAgenda(){
     if (w) {
       const dias = diasVista(), mins = [];
       A.citas.forEach(c => { const b = bog(c.inicio); if (c.estado !== 'cancelada' && dias.includes(b.ymd)) mins.push(b.min); });
-      A.disp.forEach(f => { if (dias.some(d => dow(d) === f.dia)) mins.push(+f.hora_inicio.slice(0, 2) * 60 + +f.hora_inicio.slice(3, 5)); });
+      dias.forEach(d => franjasDia(d).forEach(f => mins.push(f[0])));
       const m = mins.length ? Math.min(...mins) : 7 * 60;
       w.scrollTop = Math.max(0, (m - 30 - H0 * 60) / 60 * PX);
     }
@@ -757,7 +762,7 @@ function htmlMes(){
   for (let s = 0; s < 6; s++) {
     h += '<tr>';
     for (let i = 0; i < 7; i++) {
-      const d = sumarDias(ini, s * 7 + i), cls = [d.slice(0, 7) !== A.mes ? 'fuera' : '', d === hoy ? 'hoy' : '', sel.has(d) && A.modo !== 'lista' ? 'sel' : '', con.has(d) ? 'cd' : ''].join(' ');
+      const d = sumarDias(ini, s * 7 + i), cls = [d.slice(0, 7) !== A.mes ? 'fuera' : '', d === hoy ? 'hoy' : '', sel.has(d) && A.modo !== 'lista' ? 'sel' : '', con.has(d) ? 'cd' : '', esFestivoCO(d) ? 'fest' : ''].join(' ');
       h += `<td><button class="${cls}" onclick="irFecha('${d}')">${+d.slice(8)}</button></td>`;
     }
     h += '</tr>';
@@ -772,7 +777,8 @@ function htmlLateral(){
     <div class="acciones"><button class="btn sm" onclick="copiar(enlaceReservas())">Copiar</button>
     <a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Agenda tu cita conmigo aquí: ' + enlaceReservas())}">WhatsApp</a>
     <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceReservas())}">Ver</a></div></div>`;
-  h += `<div class="card leyenda">${[['pendiente','Pendiente'],['confirmada','Confirmada'],['asistio','Asistió'],['no_asistio','No asistió']].map(x => `<span><i style="background:${COLOR[x[0]][1]}"></i>${x[1]}</span>`).join('')}<span><i style="background:#ecfdf5;border:1px solid #a7f3d0"></i>Tu horario</span></div>`;
+  h += `<div class="card leyenda">${[['pendiente','Pendiente'],['confirmada','Confirmada'],['asistio','Asistió'],['no_asistio','No asistió']].map(x => `<span><i style="background:${COLOR[x[0]][1]}"></i>${x[1]}</span>`).join('')}<span><i style="background:#ecfdf5;border:1px solid #a7f3d0"></i>Tu horario</span><span><i style="background:#e2e8f0"></i>No disponible</span><span><i style="background:#fee2e2"></i>Festivo</span></div>
+    <div class="card"><h3>🚫 ¿No vas a atender?</h3><p class="mini">Marca vacaciones o un rato libre y nadie podrá reservar ahí.</p><button class="btn sm full" onclick="formBloqueo({fecha:A.fecha})">Marcar no disponible</button></div>`;
   return h;
 }
 function htmlGrid(){
@@ -784,9 +790,15 @@ function htmlGrid(){
   let cuerpo = `<div class="cg" style="grid-template-columns:${cols};height:${H}px"><div class="cg-horas">${horas}</div>`;
   dias.forEach(d => {
     let x = '';
-    A.disp.filter(f => f.dia === dow(d)).forEach(f => {
-      const a = Math.max(H0 * 60, +f.hora_inicio.slice(0, 2) * 60 + +f.hora_inicio.slice(3, 5)), b = Math.min(H1 * 60, +f.hora_fin.slice(0, 2) * 60 + +f.hora_fin.slice(3, 5));
+    franjasDia(d).forEach(f => {
+      const a = Math.max(H0 * 60, f[0]), b = Math.min(H1 * 60, f[1]);
       if (b > a) x += `<div class="cg-disp" style="top:${(a - H0 * 60) / 60 * PX}px;height:${(b - a) / 60 * PX}px"></div>`;
+    });
+    (A.bloq || []).forEach(bl => {
+      const i0 = new Date(d + 'T00:00:00-05:00').getTime(), i1 = i0 + 86400000, s0 = Math.max(i0, new Date(bl.inicio).getTime()), s1 = Math.min(i1, new Date(bl.fin).getTime());
+      if (s1 <= s0) return;
+      const a = Math.max(H0 * 60, (s0 - i0) / 60000), b2 = Math.min(H1 * 60, (s1 - i0) / 60000);
+      if (b2 > a) x += `<div class="cg-bloq" style="top:${(a - H0 * 60) / 60 * PX}px;height:${(b2 - a) / 60 * PX}px" onclick="event.stopPropagation();detalleBloqueo('${bl.id}')"><span>🚫 No disponible${bl.motivo ? ' · ' + esc(bl.motivo) : ''}</span></div>`;
     });
     A.citas.filter(c => c.estado !== 'cancelada' && bog(c.inicio).ymd === d).forEach(c => {
       const a = bog(c.inicio).min, dur = Math.max(20, (new Date(c.fin) - new Date(c.inicio)) / 60000), col = COLOR[c.estado] || COLOR.confirmada;
@@ -910,20 +922,6 @@ async function toggleServicio(id, activo){
 }
 
 /* --- HORARIOS --- */
-async function vistaHorarios(){
-  const v = $('vista');
-  v.innerHTML = `<h2>Horario de atención <button class="btn sm" onclick="formFranja()">+ Agregar</button></h2>
-  <p class="mini" style="margin-top:-4px;margin-bottom:10px">Tus pacientes solo podrán reservar dentro de estas franjas. Las citas ya agendadas se descuentan solas.</p><div id="lista-disp"><div class="carga" style="padding:20px">Cargando…</div></div>`;
-  const { data, error } = await sb.from('disponibilidad').select('*').order('hora_inicio');
-  if (error) { $('lista-disp').innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
-  S.disp = data || [];
-  if (!S.disp.length) { $('lista-disp').innerHTML = `<div class="empty">Agrega tus franjas de atención. Ej: lunes de 8:00 a. m. a 12:00 m.</div>`; return; }
-  $('lista-disp').innerHTML = `<div class="card">` + ORDEN_DIAS.map(d => {
-    const fr = S.disp.filter(x => x.dia === d); if (!fr.length) return '';
-    const dup = fr.some((x, i) => fr.some((y, j) => j !== i && x.hora_inicio < y.hora_fin && y.hora_inicio < x.hora_fin));
-    return `<div class="dia">${DIAS[d]}${dup ? ' <span class="badge b-bad">Franjas repetidas: quita una</span>' : ''}</div>` + fr.map(x => `<div class="franja"><span>${x.hora_inicio.slice(0,5)} – ${x.hora_fin.slice(0,5)}</span><button class="btn sm red" onclick="borrarFranja('${x.id}')">Quitar</button></div>`).join('');
-  }).join('') + `</div>`;
-}
 function formFranja(){
   abrirModal(`<h3>Nueva franja de atención</h3>
   <label>Días</label><div class="chips" id="f-dias">${ORDEN_DIAS.map(d => `<div class="chip" data-d="${d}" onclick="this.classList.toggle('on')">${DIAS[d].slice(0,3)}</div>`).join('')}</div>
@@ -1421,6 +1419,7 @@ async function formCita(o){
   <div class="fila"><div><label>Fecha</label><input id="ct-fecha" type="date" value="${esc(o.fecha || hoyYMD())}"></div><div><label>Hora</label><input id="ct-hora" type="time" value="${esc(o.hora || '09:00')}" step="900"></div></div>
   <div class="fila"><div><label>Repetir</label><select id="ct-rep" onchange="$('ct-n-box').style.visibility=this.value==='0'?'hidden':'visible'"><option value="0">No se repite</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="28">Cada 4 semanas</option></select></div>
   <div id="ct-n-box" style="visibility:hidden"><label>N.º de sesiones</label><input id="ct-n" type="number" min="2" max="24" value="8"></div></div>
+  ${o.hora && !o.pacId ? `<p class="mini" style="margin-top:8px">¿No atiendes a esa hora? <a href="#" onclick="cerrarModal();setTimeout(()=>formBloqueo({fecha:'${esc(o.fecha)}',hora:'${esc(o.hora)}'}),250);return false">Marcar no disponible</a></p>` : ''}
   <label>Enlace de videollamada (opcional)</label><input id="ct-link" maxlength="300" placeholder="https://meet.google.com/...">
   <button class="btn sm ghost" style="margin-top:8px" onclick="$('ct-link').value='https://meet.jit.si/ConsultaLV-'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('')">🎥 Crear sala privada de videollamada</button>
   <button class="btn full" id="ct-btn" onclick="guardarCita()">Agendar (confirmada)</button>
@@ -1507,6 +1506,136 @@ function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda,
 function urlPublica(q){ return location.origin + location.pathname + q; }
 function estrellas(n){ n = Math.round(n || 0); return '★'.repeat(n) + '☆'.repeat(5 - n); }
 
+/* --- DISPONIBILIDAD AUTOMÁTICA Y BLOQUEOS --- */
+function horaMin(t){ return +String(t).slice(0, 2) * 60 + +String(t).slice(3, 5); }
+function minHora(m){ return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+function hora12(t){ const m = horaMin(t), h = Math.floor(m / 60), mm = m % 60; return (h % 12 || 12) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (h < 12 ? ' a. m.' : ' p. m.'); }
+function esFestivoCO(ymd){
+  const y = +ymd.slice(0, 4), a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const pas = `${y}-${String(Math.floor((h + l - 7 * m + 114) / 31)).padStart(2, '0')}-${String(((h + l - 7 * m + 114) % 31) + 1).padStart(2, '0')}`;
+  if (['01-01', '05-01', '07-20', '08-07', '12-08', '12-25'].includes(ymd.slice(5))) return true;
+  if ([-3, -2, 43, 64, 71].some(n => sumarDias(pas, n) === ymd)) return true;
+  return ['01-06', '03-19', '06-29', '08-15', '10-12', '11-01', '11-11'].some(md => { const fx = `${y}-${md}`, w = dow(fx) || 7; return sumarDias(fx, (8 - w) % 7) === ymd; });
+}
+const tieneAuto = () => S.prof && typeof S.prof.horario_auto === 'boolean';
+function franjasDia(ymd){
+  const p = S.prof, w = dow(ymd), manual = () => (A.disp || []).filter(f => f.dia === w).map(f => [horaMin(f.hora_inicio), horaMin(f.hora_fin)]);
+  if (!tieneAuto()) return manual();
+  if (!p.atiende_festivos && esFestivoCO(ymd)) return [];
+  if (!p.horario_auto) return manual();
+  if (!(p.dias_atencion || []).map(Number).includes(w)) return [];
+  const ini = horaMin(p.jornada_ini), fin = w === 6 && p.sabado_fin ? Math.min(horaMin(p.jornada_fin), horaMin(p.sabado_fin)) : horaMin(p.jornada_fin);
+  if (p.almuerzo_ini && horaMin(p.almuerzo_ini) < fin) { const r = [[ini, horaMin(p.almuerzo_ini)]]; if (horaMin(p.almuerzo_fin) < fin) r.push([horaMin(p.almuerzo_fin), fin]); return r; }
+  return [[ini, fin]];
+}
+function resumenJornada(p){
+  const ds = ORDEN_DIAS.filter(d => (p.dias_atencion || []).map(Number).includes(d)).map(d => DIAS[d].slice(0, 3));
+  return `${ds.join(', ') || 'Ningún día'} · ${hora12(p.jornada_ini)} a ${hora12(p.jornada_fin)}${p.almuerzo_ini ? ` · descanso ${hora12(p.almuerzo_ini)} a ${hora12(p.almuerzo_fin)}` : ''}${(p.dias_atencion || []).map(Number).includes(6) && p.sabado_fin ? ` · sábados hasta ${hora12(p.sabado_fin)}` : ''} · ${p.atiende_festivos ? 'atiende festivos' : 'sin festivos'}`;
+}
+async function vistaHorarios(){
+  const v = $('vista'), p = S.prof;
+  v.innerHTML = `<h2>🕘 Disponibilidad</h2><div id="disp-c"><div class="carga" style="padding:20px">Cargando…</div></div>`;
+  const [d, b] = await Promise.all([sb.from('disponibilidad').select('*').order('hora_inicio'),
+    sb.from('bloqueos').select('*').gte('fin', new Date().toISOString()).order('inicio', { ascending: true })]);
+  const box = $('disp-c'); if (!box) return;
+  if (d.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(d.error))}</div>`; return; }
+  S.disp = d.data || []; const bloq = b.error ? [] : (b.data || []);
+  let h = '';
+  if (!tieneAuto()) h += `<div class="aviso warn">Para activar el horario automático falta ejecutar la actualización <b>v6</b> de la base de datos.</div>`;
+  if (!tieneAuto() || !p.horario_auto) {
+    h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">Franjas personalizadas</h3><button class="btn sm" onclick="formFranja()">+ Agregar</button></div>
+      <p class="mini">Tus pacientes solo pueden reservar dentro de estas franjas.</p>` +
+      (S.disp.length ? ORDEN_DIAS.map(dd => { const fr = S.disp.filter(x => x.dia === dd); if (!fr.length) return '';
+        const dup = fr.some((x, i) => fr.some((y, j) => j !== i && x.hora_inicio < y.hora_fin && y.hora_inicio < x.hora_fin));
+        return `<div class="dia">${DIAS[dd]}${dup ? ' <span class="badge b-bad">Franjas repetidas: quita una</span>' : ''}</div>` + fr.map(x => `<div class="franja"><span>${x.hora_inicio.slice(0,5)} – ${x.hora_fin.slice(0,5)}</span><button class="btn sm red" onclick="borrarFranja('${x.id}')">Quitar</button></div>`).join(''); }).join('')
+        : `<div class="empty">Sin franjas.</div>`) +
+      (tieneAuto() ? `<button class="btn full" style="margin-top:12px" onclick="cambiarModoHorario(true)">⚡ Volver al horario automático</button>` : '') + `</div>`;
+  } else {
+    const dias = (p.dias_atencion || []).map(Number);
+    h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">⚡ Horario automático</h3><span class="badge b-ok">Activo</span></div>
+      <p style="font-size:14px;line-height:1.5;margin:8px 0">Tus pacientes ven horas libres en este horario <b>sin que tengas que configurar nada</b>. Solo marca abajo los días u horas en que <b>no</b> vas a atender.</p>
+      <div class="aviso info" style="font-size:13px">${esc(resumenJornada(p))}</div>
+      <details style="margin-top:6px"><summary style="cursor:pointer;font-weight:700;color:var(--pri);padding:6px 0">Cambiar mi jornada</summary>
+      <label>Días que atiendes</label><div class="chips" id="j-dias">${ORDEN_DIAS.map(dd => `<div class="chip ${dias.includes(dd) ? 'on' : ''}" data-d="${dd}" onclick="this.classList.toggle('on')">${DIAS[dd].slice(0, 3)}</div>`).join('')}</div>
+      <div class="fila"><div><label>Empiezas</label><input id="j-ini" type="time" value="${esc(String(p.jornada_ini).slice(0, 5))}"></div><div><label>Terminas</label><input id="j-fin" type="time" value="${esc(String(p.jornada_fin).slice(0, 5))}"></div></div>
+      <label class="check"><input type="checkbox" id="j-alm" ${p.almuerzo_ini ? 'checked' : ''} onchange="$('j-alm-h').style.display=this.checked?'':'none'"><span>Tomo un descanso (almuerzo)</span></label>
+      <div class="fila" id="j-alm-h" style="${p.almuerzo_ini ? '' : 'display:none'}"><div><label>Desde</label><input id="j-a1" type="time" value="${esc(String(p.almuerzo_ini || '12:00').slice(0, 5))}"></div><div><label>Hasta</label><input id="j-a2" type="time" value="${esc(String(p.almuerzo_fin || '14:00').slice(0, 5))}"></div></div>
+      <label>Los sábados termino a las</label><input id="j-sab" type="time" value="${esc(String(p.sabado_fin || p.jornada_fin).slice(0, 5))}">
+      <label class="check"><input type="checkbox" id="j-fest" ${p.atiende_festivos ? 'checked' : ''}><span>Atiendo en días festivos</span></label>
+      <button class="btn full" id="j-btn" onclick="guardarJornada()">Guardar jornada</button></details>
+      <button class="btn sm ghost" style="margin-top:8px" onclick="cambiarModoHorario(false)">Prefiero definir franjas a mano</button></div>`;
+  }
+  h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">🚫 No disponible</h3><button class="btn sm" onclick="formBloqueo({fecha:hoyYMD()})">+ Marcar</button></div>
+    <p class="mini">Vacaciones, citas médicas, capacitaciones… En esos días u horas nadie podrá reservar. También puedes marcarlo desde la Agenda.</p>` +
+    (bloq.length ? bloq.map(x => `<div class="franja"><span class="grow">${esc(textoBloqueo(x))}${x.motivo ? `<br><small class="sub">${esc(x.motivo)}</small>` : ''}</span><button class="btn sm red" onclick="quitarBloqueo('${x.id}')">Quitar</button></div>`).join('')
+      : `<div class="empty" style="padding:14px">No tienes días bloqueados.</div>`) + `</div>`;
+  box.innerHTML = h;
+}
+function textoBloqueo(x){
+  const a = bog(x.inicio), b = bog(new Date(new Date(x.fin).getTime() - 60000).toISOString());
+  const f = ymd => fecha(ymd + 'T17:00:00Z', { weekday: 'short', day: 'numeric', month: 'short' });
+  const todo = a.min === 0 && bog(x.fin).min === 0;
+  if (todo) return a.ymd === b.ymd ? `${f(a.ymd)} · todo el día` : `Del ${f(a.ymd)} al ${f(b.ymd)}`;
+  return `${f(a.ymd)} · ${hora(x.inicio)} a ${hora(x.fin)}`;
+}
+async function guardarJornada(){
+  const d = { dias_atencion: [...document.querySelectorAll('#j-dias .chip.on')].map(c => +c.dataset.d), jornada_ini: $('j-ini').value, jornada_fin: $('j-fin').value,
+    almuerzo_ini: $('j-alm').checked ? $('j-a1').value : null, almuerzo_fin: $('j-alm').checked ? $('j-a2').value : null, sabado_fin: $('j-sab').value || null, atiende_festivos: $('j-fest').checked };
+  if (!d.dias_atencion.length) { toast('Elige al menos un día', true); return; }
+  if (!d.jornada_ini || !d.jornada_fin || d.jornada_fin <= d.jornada_ini) { toast('La hora de terminar debe ser después de la de empezar', true); return; }
+  if (d.almuerzo_ini && !(d.almuerzo_ini > d.jornada_ini && d.almuerzo_fin > d.almuerzo_ini && d.almuerzo_fin < d.jornada_fin)) { toast('El descanso debe quedar dentro de tu jornada', true); return; }
+  $('j-btn').disabled = true;
+  const { data, error } = await sb.from('profesionales').update(d).eq('id', S.prof.id).select().single();
+  if (error) { $('j-btn').disabled = false; toast(mensajeError(error), true); return; }
+  S.prof = data; toast('Jornada guardada ✅'); vistaHorarios();
+}
+async function cambiarModoHorario(auto){
+  if (!auto && !confirm('Con franjas a mano, tus pacientes solo verán las horas que agregues. ¿Continuar?')) return;
+  const { data, error } = await sb.from('profesionales').update({ horario_auto: auto }).eq('id', S.prof.id).select().single();
+  if (error) { toast(mensajeError(error), true); return; }
+  S.prof = data; toast(auto ? 'Horario automático activado ⚡' : 'Ahora defines tus franjas'); vistaHorarios();
+}
+function formBloqueo(o){
+  o = o || {}; const f = o.fecha || hoyYMD(), h1 = o.hora || '', h2 = h1 ? minHora(Math.min(23 * 60 + 59, horaMin(h1) + 60)) : '';
+  abrirModal(`<h3>🚫 Marcar no disponible</h3><p class="mini">Tus pacientes no podrán reservar en ese tiempo. Las citas que ya tengas agendadas no se cancelan.</p>
+  <div class="fila"><div><label>Desde el día</label><input id="b-d1" type="date" value="${f}" min="${hoyYMD()}"></div><div><label>Hasta el día</label><input id="b-d2" type="date" value="${f}" min="${hoyYMD()}"></div></div>
+  <label class="check"><input type="checkbox" id="b-todo" ${h1 ? '' : 'checked'} onchange="$('b-horas').style.display=this.checked?'none':''"><span>Todo el día</span></label>
+  <div class="fila" id="b-horas" style="${h1 ? '' : 'display:none'}"><div><label>Desde la hora</label><input id="b-h1" type="time" value="${h1 || '08:00'}"></div><div><label>Hasta la hora</label><input id="b-h2" type="time" value="${h2 || '12:00'}"></div></div>
+  <label>Motivo (opcional, solo lo ves tú)</label><input id="b-mot" maxlength="120" placeholder="Ej: vacaciones, cita médica, capacitación">
+  <button class="btn full" id="b-btn" onclick="guardarBloqueo()">Guardar</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function guardarBloqueo(){
+  const d1 = $('b-d1').value, d2 = $('b-d2').value || d1, todo = $('b-todo').checked, h1 = $('b-h1').value, h2 = $('b-h2').value, motivo = $('b-mot').value.trim();
+  if (!d1 || d2 < d1) { toast('Revisa las fechas', true); return; }
+  const n = Math.round((new Date(d2 + 'T12:00:00Z') - new Date(d1 + 'T12:00:00Z')) / 86400000) + 1;
+  if (n > 120) { toast('Máximo 120 días por bloqueo', true); return; }
+  let filas;
+  if (todo) filas = [{ inicio: new Date(d1 + 'T00:00:00-05:00').toISOString(), fin: new Date(sumarDias(d2, 1) + 'T00:00:00-05:00').toISOString(), motivo }];
+  else {
+    if (!h1 || !h2 || h2 <= h1) { toast('La hora final debe ser después de la inicial', true); return; }
+    filas = Array.from({ length: n }, (_, i) => sumarDias(d1, i)).map(d => ({ inicio: new Date(`${d}T${h1}:00-05:00`).toISOString(), fin: new Date(`${d}T${h2}:00-05:00`).toISOString(), motivo }));
+  }
+  $('b-btn').disabled = true;
+  const { error } = await sb.from('bloqueos').insert(filas);
+  if (error) { $('b-btn').disabled = false; toast(mensajeError(error), true); return; }
+  const c = await sb.from('citas').select('id', { count: 'exact', head: true }).in('estado', ['pendiente', 'confirmada']).lt('inicio', filas[filas.length - 1].fin).gte('inicio', filas[0].inicio);
+  const nc = c.count ?? (c.data || []).length;
+  cerrarModal(); toast(nc ? `Bloqueado. Ojo: ya tienes ${nc} cita${nc > 1 ? 's' : ''} en ese tiempo` : 'Listo: marcado como no disponible 🚫', !!nc);
+  if (S.vista === 'agenda') cargarAgenda(); else if (S.vista === 'horarios') vistaHorarios();
+}
+function detalleBloqueo(id){
+  const x = (A.bloq || []).find(b => b.id === id); if (!x) return;
+  abrirModal(`<h3>🚫 No disponible</h3><p style="font-size:15px">${esc(textoBloqueo(x))}</p>${x.motivo ? `<p class="mini">${esc(x.motivo)}</p>` : ''}
+  <button class="btn full red" onclick="quitarBloqueo('${x.id}')">Quitar: volver a estar disponible</button><button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
+}
+async function quitarBloqueo(id){
+  const { error } = await sb.from('bloqueos').delete().eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  if ($('modal').classList.contains('on')) cerrarModal();
+  toast('Disponible de nuevo ✅'); if (S.vista === 'agenda') cargarAgenda(); else vistaHorarios();
+}
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -1534,7 +1663,7 @@ function botonesCalendario(t, ini, fin, det, lugar){
 /* --- MÁS --- */
 function vistaMas(){
   const items = [['servicios','💼','Servicios','Lo que ofreces, precio y duración'],
-    ['horarios','🕘','Horarios','Cuándo pueden reservarte'],
+    ['horarios','🕘','Disponibilidad','Horario automático y días no disponibles'],
     ['perfil','👤','Perfil, pagos y directorio','Lo que ven tus pacientes'],
     ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
     ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
