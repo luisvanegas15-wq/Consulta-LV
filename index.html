@@ -84,6 +84,17 @@ nav button{font-size:10.5px}
 .resena{border-top:1px solid var(--line);padding:10px 0}.resena p{font-size:14px;margin-top:6px;line-height:1.5;white-space:pre-wrap}
 .resp{background:#f0f9ff;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px}
 a.dircard{display:block;color:inherit;text-decoration:none}
+.wrap.pub{max-width:920px}
+.reserva-l{display:grid;gap:12px}@media(min-width:760px){.reserva-l{grid-template-columns:330px minmax(0,1fr);align-items:start}}
+.pmes td button{width:38px;height:38px;font-size:14px}
+.pmes td button:disabled{color:#cbd5e1;cursor:default;background:none;text-decoration:none}
+.pmes td button.libre{background:#ecfdf5;color:#047857;font-weight:700}
+.pmes td button.psel{background:var(--pri);color:#fff;font-weight:800}
+.pmes td button.hoy:not(.psel){box-shadow:inset 0 0 0 2px var(--pri)}
+.pleyenda{display:inline-block;width:12px;height:12px;border-radius:50%;background:#ecfdf5;border:1px solid #6ee7b7;vertical-align:-2px}
+.franja-t{font-size:12px;color:var(--sub);font-weight:700;margin:10px 0 6px}
+.slot.ocupado{background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:not-allowed;padding:6px 4px}
+.slot small{display:block;font-size:10px;font-weight:600;text-decoration:none}
 .agenda-l{display:grid;gap:14px;align-items:start}
 @media(min-width:900px){.agenda-l{grid-template-columns:280px minmax(0,1fr)}}
 .agenda-l>*{min-width:0}
@@ -171,7 +182,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.1';
+const VERSION = '3.2';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -263,7 +274,7 @@ function textoConsentimiento(nombre){
 /* =========================================================
    PÁGINA PÚBLICA DE RESERVAS  (?p=enlace)
    ========================================================= */
-const R = { perfil: null, serv: null, fecha: null, hora: null, horas: [] };
+const R = { perfil: null, serv: null, fecha: null, hora: null, horas: [], mes: null, dias: null, elegida: false };
 
 async function paginaPublica(){
   const { data, error } = await sb.rpc('perfil_publico', { p_slug: SLUG });
@@ -271,7 +282,7 @@ async function paginaPublica(){
     app.innerHTML = `<header><h1>Consulta LV</h1></header><div class="wrap"><div class="empty">Esta página de reservas no está disponible.<br>Verifica el enlace con tu profesional.</div></div>`;
     return;
   }
-  R.perfil = data; R.fecha = hoyYMD();
+  R.perfil = data; R.fecha = hoyYMD(); R.mes = R.fecha.slice(0, 7);
   pintarPublica();
 }
 
@@ -295,7 +306,7 @@ function pintarPublica(){
     </div>`;
   }
   let h = `<header style="padding-bottom:70px"><small>Reserva tu cita en línea</small></header>
-  <div class="wrap" style="padding-bottom:70px">
+  <div class="wrap pub" style="padding-bottom:70px">
   <div class="perfil">${f ? `<img class="foto foto-g" src="${esc(f)}" alt="">` : `<div class="foto foto-g" style="display:inline-flex;align-items:center;justify-content:center;font-size:40px">🧠</div>`}
     <h1>${esc(p.nombre)}</h1>
     <div class="sub">${esc(p.titulo)}${p.tarjeta ? ' · T.P. ' + esc(p.tarjeta) : ''}${p.ciudad ? ' · ' + esc(p.ciudad) : ''}</div>
@@ -312,12 +323,10 @@ function pintarPublica(){
   });
   if (servs.length) h += `<p class="mini" style="text-align:center">¿No encuentras un horario que te sirva? <a href="#" onclick="formEspera();return false">Únete a la lista de espera</a></p>`;
   if (R.serv) {
-    h += `<h2>2. Elige el día</h2><div class="chips">`;
-    for (let i = 0; i < 21; i++) {
-      const d = sumarDias(hoyYMD(), i), dt = new Date(d + 'T12:00:00Z');
-      h += `<div class="chip ${d === R.fecha ? 'on' : ''}" onclick="elegirFecha('${d}')">${DIAS[dt.getUTCDay()].slice(0,3)}<b>${dt.getUTCDate()}</b>${dt.toLocaleDateString('es-CO',{month:'short',timeZone:'UTC'})}</div>`;
-    }
-    h += `</div><h2>3. Elige la hora</h2><div id="horas"><div class="carga" style="padding:20px">Buscando horarios…</div></div><div id="form-reserva"></div>`;
+    h += `<h2 id="paso2">2. Elige fecha y hora</h2><div class="reserva-l">
+      <div class="card mes pmes" id="r-mes"></div>
+      <div class="card" id="r-horas-c"><div id="r-dia-t" style="font-size:15px;margin-bottom:8px"></div><div id="horas"><div class="carga" style="padding:20px">Buscando horarios…</div></div></div></div>
+      <div id="form-reserva"></div>`;
   }
   h += htmlPagoPublico(p) + `<div class="pie">
     <a href="#" onclick="verLegal('datos');return false">Política de tratamiento de datos</a> ·
@@ -325,26 +334,83 @@ function pintarPublica(){
     Plataforma segura de LV Studio · Consulta LV</div></div>
   <div class="crisis"><span>¿Estás en crisis?</span><span><a href="tel:106">📞 Línea 106</a> · <a href="tel:123">🚨 123</a></span></div>`;
   app.innerHTML = h;
-  if (R.serv) cargarHoras();
+  if (R.serv) cargarDias();
 }
 
-function elegirServicio(id){ R.serv = R.perfil.servicios.find(s => s.id === id); R.hora = null; pintarPublica(); }
-function elegirFecha(d){ R.fecha = d; R.hora = null; pintarPublica(); }
+function elegirServicio(id){
+  R.serv = R.perfil.servicios.find(s => s.id === id); R.hora = null; R.elegida = false; R.dias = null;
+  R.mes = (R.fecha || hoyYMD()).slice(0, 7); pintarPublica();
+  setTimeout(() => { const p = $('paso2'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+}
+function elegirFecha(d){
+  R.fecha = d; R.hora = null; R.elegida = true; pintarMesPublico(); cargarHoras();
+  const f = $('form-reserva'); if (f) f.innerHTML = '';
+  if (innerWidth < 760) setTimeout(() => { const c = $('r-horas-c'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+}
+function moverMesPub(n){ R.mes = mesSum(R.mes, n); R.elegida = false; cargarDias(); }
+async function cargarDias(){
+  const ini = lunes(R.mes + '-01'), fin = sumarDias(ini, 41), serv = R.serv.id;
+  R.dias = null; pintarMesPublico(true);
+  const { data, error } = await sb.rpc('dias_disponibles', { p_slug: SLUG, p_servicio: serv, p_desde: ini, p_hasta: fin });
+  if (!R.serv || R.serv.id !== serv) return;
+  R.dias = error ? null : new Set((data || []).map(x => typeof x === 'string' ? x : Object.values(x)[0]).map(x => String(x).slice(0, 10)));
+  if (R.dias && !R.elegida) {
+    const enMes = [...R.dias].filter(d => d.slice(0, 7) === R.mes).sort();
+    if (!R.dias.has(R.fecha) || R.fecha.slice(0, 7) !== R.mes) R.fecha = enMes[0] || (R.mes === hoyYMD().slice(0, 7) ? hoyYMD() : R.mes + '-01');
+  }
+  pintarMesPublico(); cargarHoras();
+}
+function pintarMesPublico(cargando){
+  const box = $('r-mes'); if (!box) return;
+  const [y, m] = R.mes.split('-').map(Number), ini = lunes(R.mes + '-01'), hoy = hoyYMD(), max = sumarDias(hoy, 60);
+  let h = `<div class="row" style="margin-bottom:8px"><b class="grow" style="font-size:16px">${MESES[m - 1].charAt(0).toUpperCase() + MESES[m - 1].slice(1)} ${y}</b>
+    <button class="btn sm ghost" onclick="moverMesPub(-1)" ${R.mes <= hoy.slice(0, 7) ? 'disabled' : ''}>‹</button><button class="btn sm ghost" onclick="moverMesPub(1)" ${R.mes >= max.slice(0, 7) ? 'disabled' : ''}>›</button></div>
+    <table><tr>${['L','M','M','J','V','S','D'].map(d => `<th>${d}</th>`).join('')}</tr>`;
+  for (let s = 0; s < 6; s++) {
+    h += '<tr>';
+    for (let i = 0; i < 7; i++) {
+      const d = sumarDias(ini, s * 7 + i), libre = R.dias && R.dias.has(d);
+      const off = d < hoy || d > max || (R.dias && !libre) || (cargando && d !== R.fecha);
+      const cls = [d.slice(0, 7) !== R.mes ? 'fuera' : '', d === hoy ? 'hoy' : '', libre ? 'libre' : '', d === R.fecha ? 'psel' : ''].join(' ');
+      h += `<td><button class="${cls}" ${off ? 'disabled' : `onclick="elegirFecha('${d}')"`}>${+d.slice(8)}</button></td>`;
+    }
+    h += '</tr>';
+  }
+  h += `</table><p class="mini" style="margin-top:8px">${cargando ? 'Buscando días con disponibilidad…' : R.dias ? (R.dias.size ? '<span class="pleyenda"></span> Días con horas libres' : 'No hay horas libres en estas fechas. Prueba el mes siguiente o únete a la lista de espera.') : ''}</p>`;
+  box.innerHTML = h;
+}
 
 async function cargarHoras(){
-  const { data, error } = await sb.rpc('horarios_libres', { p_slug: SLUG, p_servicio: R.serv.id, p_fecha: R.fecha });
   const box = $('horas'); if (!box) return;
-  if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
-  R.horas = (data || []).map(x => x.hora);
-  if (!R.horas.length) { box.innerHTML = `<div class="empty">No hay horarios libres este día. Prueba otro día.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`; return; }
-  box.innerHTML = `<div class="grid">${R.horas.map((t, i) => `<button class="slot ${R.hora === t ? 'on' : ''}" onclick="elegirHora(${i})">${esc(hora(t))}</button>`).join('')}</div>`;
-  if (R.hora) pintarFormReserva();
+  const t = fecha(R.fecha + 'T17:00:00Z', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('r-dia-t').innerHTML = `📅 <b>${esc(t.charAt(0).toUpperCase() + t.slice(1))}</b>`;
+  const fch = R.fecha, args = { p_slug: SLUG, p_servicio: R.serv.id, p_fecha: R.fecha };
+  let lista, r = await sb.rpc('horarios_dia', args);
+  if (r.error || !Array.isArray(r.data)) {
+    const r2 = await sb.rpc('horarios_libres', args);
+    if (r2.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(r2.error))}</div>`; return; }
+    lista = (r2.data || []).map(x => ({ hora: x.hora, libre: true }));
+  } else lista = r.data;
+  if (R.fecha !== fch || !$('horas')) return;
+  R.horas = lista.filter(x => x.libre).map(x => x.hora);
+  if (lista.length && R.horas.length) {
+    const grupos = [['🌅 Mañana', x => bog(x.hora).min < 720], ['☀️ Tarde', x => bog(x.hora).min >= 720 && bog(x.hora).min < 1080], ['🌙 Noche', x => bog(x.hora).min >= 1080]];
+    box.innerHTML = grupos.map(([n, f]) => { const l = lista.filter(f); if (!l.length) return '';
+      return `<div class="franja-t">${n}</div><div class="grid">${l.map(x => x.libre
+        ? `<button class="slot ${R.hora === x.hora ? 'on' : ''}" onclick="elegirHora('${esc(x.hora)}')">${esc(hora(x.hora))}</button>`
+        : `<button class="slot ocupado" disabled title="Hora ocupada"><s>${esc(hora(x.hora))}</s><small>Ocupada</small></button>`).join('')}</div>`; }).join('')
+      + `<p class="mini" style="margin-top:10px">Las horas en gris ya están reservadas.</p>`;
+    if (R.hora) pintarFormReserva();
+    return;
+  }
+  if (lista.length) { box.innerHTML = `<div class="empty">Todas las horas de este día ya están reservadas.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`; return; }
+  box.innerHTML = `<div class="empty">No hay atención este día. Elige un día marcado en verde.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`;
 }
-function elegirHora(i){ R.hora = R.horas[i]; cargarHoras(); }
+function elegirHora(t){ if (!R.horas.includes(t)) return; R.hora = t; cargarHoras().then(() => { const f = $('form-reserva'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); }
 
 function pintarFormReserva(){
   const n = R.perfil.nombre;
-  $('form-reserva').innerHTML = `<h2>4. Tus datos</h2>
+  $('form-reserva').innerHTML = `<h2>3. Tus datos</h2>
   <div class="card">
     <div class="aviso info">📅 ${esc(fecha(R.hora, { weekday:'long', day:'numeric', month:'long' }))} · ${esc(hora(R.hora))}<br>${esc(R.serv.nombre)}${R.serv.precio ? ' · ' + peso(R.serv.precio) : ''}</div>
     <label>Nombre completo</label><input id="r-nombre" maxlength="120" autocomplete="name">
