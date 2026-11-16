@@ -54,6 +54,22 @@ textarea{min-height:90px;resize:vertical}
 .acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .foto-g{width:110px;height:110px}
 .wrap.ancha{max-width:1240px}
+.bienv{background:linear-gradient(135deg,#0e7490,#6d28d9);color:#fff;border-radius:20px;padding:20px;margin-top:4px;box-shadow:0 10px 30px rgba(109,40,217,.25)}
+.bienv-t{display:flex;gap:14px;align-items:center}
+.bienv .foto{border:3px solid rgba(255,255,255,.7)}
+.bienv-f{margin-top:14px;font-size:15px;line-height:1.5;font-style:italic;opacity:.95}
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:14px 0}
+@media(min-width:700px){.kpis{grid-template-columns:repeat(4,1fr)}}
+.kpi{background:#fff;border-radius:16px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,.05);cursor:pointer}
+.kpi b{display:block;font-size:22px;color:var(--pri)}.kpi span{font-size:12px;color:var(--sub)}
+.prox{border:2px solid #bae6fd;cursor:pointer}
+.paso{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:14px;cursor:pointer}
+.paso.hecho{color:var(--sub);cursor:default;text-decoration:line-through}
+.rapidos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:700px){.rapidos{grid-template-columns:repeat(4,1fr)}}
+.rapidos button{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 8px;font-size:13px;font-weight:600;color:var(--txt);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
+.rapidos i{font-style:normal;font-size:24px}
+nav button{font-size:10.5px}
 .agenda-l{display:grid;gap:14px;align-items:start}
 @media(min-width:900px){.agenda-l{grid-template-columns:280px minmax(0,1fr)}}
 .agenda-l>*{min-width:0}
@@ -141,7 +157,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '2.1';
+const VERSION = '2.2';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -174,7 +190,7 @@ window.addEventListener('popstate', e => {
   if (NAV.ignorar) { NAV.ignorar = false; return; }
   if ($('modal').classList.contains('on')) { $('modal').classList.remove('on'); return; }
   if (!S.prof) return;
-  const st = e.state && e.state.v ? e.state : { v: 'agenda', d: 0 };
+  const st = e.state && e.state.v ? e.state : { v: 'inicio', d: 0 };
   NAV.actual = st;
   if (st.ficha) abrirFicha(st.ficha, true); else irA(st.v, true);
   actualizarAtras();
@@ -377,7 +393,7 @@ async function enviarHabeas(){
 /* =========================================================
    APP DEL PSICÓLOGO
    ========================================================= */
-const S = { prof: null, vista: 'agenda', servicios: [], disp: [], citas: [] };
+const S = { prof: null, vista: 'inicio', servicios: [], disp: [], citas: [] };
 
 function pantallaAcceso(modo){
   modo = modo || 'entrar';
@@ -442,7 +458,7 @@ async function abrirPanel(){
   const { data, error } = await sb.from('profesionales').select('*').single();
   if (error || !data) { toast(mensajeError(error), true); pantallaAcceso('entrar'); return; }
   S.prof = data; reiniciarInactividad();
-  if (!data.nombre || !data.slug) S.vista = 'perfil';
+  S.vista = 'inicio';
   pintarPanel();
 }
 
@@ -456,6 +472,7 @@ function pintarPanel(){
     <button class="hbtn" id="btn-atras" onclick="history.back()" style="right:auto;left:auto;right:84px;display:none;font-size:18px;padding:6px 14px">←</button></header>
   <div class="wrap" id="vista"></div>
   <nav>
+    <button data-v="inicio"><i>🏠</i>Inicio</button>
     <button data-v="agenda"><i>📅</i>Agenda</button>
     <button data-v="pacientes"><i>🗂️</i>Pacientes</button>
     <button data-v="servicios"><i>💼</i>Servicios</button>
@@ -471,8 +488,81 @@ function irA(v, sinHistoria){
   S.vista = v;
   if ($('vista')) $('vista').classList.remove('ancha');
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ({ agenda: vistaAgenda, pacientes: vistaPacientes, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil })[v]();
+  ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil })[v]();
   window.scrollTo(0, 0); actualizarAtras();
+}
+
+/* --- INICIO (bienvenida) --- */
+const FRASES = ['Cada sesión es una oportunidad de acompañar un cambio real.', 'Cuidar de otros empieza por cuidar tu tiempo.', 'Tu consulta organizada, tu mente tranquila.', 'Pequeños pasos en sesión, grandes cambios en la vida de tus pacientes.', 'Hoy también vas a hacer la diferencia para alguien.', 'Escuchar es el primer acto de cuidado.', 'Una agenda en orden te deja más espacio para lo humano.'];
+const TIPS_PRO = ['Envía el recordatorio por WhatsApp el día anterior: es lo que más reduce las inasistencias.', 'Aplica el PHQ-9 o el GAD-7 cada 4 sesiones para mostrarle al paciente su avance.', 'Comparte tu página de reservas en tu estado de WhatsApp y en tu biografía de Instagram.', 'Escribe la nota apenas termine la sesión: dictarla con el teclado toma 2 minutos.', 'Bloquea un espacio libre entre sesiones para descansar y escribir notas.', 'Pide el pago por Nequi al confirmar la cita: así se comprometen más.', 'Exporta la historia en PDF solo cuando la necesites y guárdala en un lugar seguro.'];
+async function vistaInicio(){
+  const p = S.prof, v = $('vista'), ahora = new Date(), hr = ahora.getHours();
+  const saludo = hr < 12 ? 'Buenos días' : hr < 19 ? 'Buenas tardes' : 'Buenas noches';
+  const nombre = p.nombre ? p.nombre.trim().split(' ')[0] : '';
+  const hoy = hoyYMD(), mesIni = hoy.slice(0, 7) + '-01', dia = new Date().getDate();
+  const fh = fecha(ahora.toISOString(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  v.innerHTML = `<div class="bienv">
+    <div class="bienv-t"><div class="foto" style="width:62px;height:62px;flex-shrink:0;${fotoSegura(p.foto_url) ? '' : 'display:flex;align-items:center;justify-content:center;font-size:26px'}">${fotoSegura(p.foto_url) ? `<img src="${esc(p.foto_url)}" alt="" style="width:100%;height:100%;border-radius:50%;object-fit:cover">` : '🧠'}</div>
+    <div><h2 style="margin:0;font-size:22px">${saludo}${nombre ? ', ' + esc(nombre) : ''} 👋</h2><div class="sub" style="color:#e0f2fe">${esc(fh.charAt(0).toUpperCase() + fh.slice(1))}</div></div></div>
+    <p class="bienv-f">“${esc(FRASES[dia % FRASES.length])}”</p></div>
+  <div id="ini-c"><div class="carga" style="padding:30px">Preparando tu resumen…</div></div>`;
+  const [ci, sv, di, pa, ll] = await Promise.all([
+    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+      .gte('inicio', mesIni + 'T00:00:00-05:00').lt('inicio', sumarDias(hoy, 8) + 'T00:00:00-05:00').order('inicio', { ascending: true }),
+    sb.from('servicios').select('id').eq('activo', true),
+    sb.from('disponibilidad').select('id'),
+    sb.from('pacientes').select('id', { count: 'exact', head: true }),
+    sb.from('llaves').select('profesional_id').maybeSingle()]);
+  const box = $('ini-c'); if (!box) return;
+  const err = ci.error || sv.error || di.error || pa.error;
+  if (err) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(err))}</div>`; return; }
+  const citas = ci.data || []; A.citas = citas;
+  const activas = citas.filter(c => c.estado !== 'cancelada');
+  const deHoy = activas.filter(c => bog(c.inicio).ymd === hoy);
+  const prox = activas.find(c => new Date(c.fin) > ahora && ['pendiente', 'confirmada'].includes(c.estado));
+  const pend = activas.filter(c => c.estado === 'pendiente' && new Date(c.inicio) > ahora);
+  const ingresos = citas.filter(c => c.pagado && bog(c.inicio).ymd.slice(0, 7) === hoy.slice(0, 7)).reduce((s, c) => s + (c.valor || 0), 0);
+  const porCobrar = citas.filter(c => !c.pagado && c.estado === 'asistio').reduce((s, c) => s + (c.valor || 0), 0);
+  const nPac = pa.count ?? (pa.data || []).length;
+  const pasos = [
+    [!!(p.nombre && p.slug), 'Completa tu perfil y tu enlace de reservas', "irA('perfil')"],
+    [!!fotoSegura(p.foto_url), 'Sube tu foto profesional', "irA('perfil')"],
+    [(sv.data || []).length > 0, 'Crea al menos un servicio', "irA('servicios')"],
+    [(di.data || []).length > 0, 'Define tu horario de atención', "irA('horarios')"],
+    [!!ll.data, 'Protege tus historias con tu clave clínica', "irA('pacientes')"]];
+  const hechos = pasos.filter(x => x[0]).length;
+  let h = '';
+  if (hechos < pasos.length) h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">🚀 Pon a punto tu consultorio</h3><b style="color:var(--pri)">${hechos}/${pasos.length}</b></div>
+    <div class="barra" style="margin:10px 0 6px"><div style="width:${hechos / pasos.length * 100}%;background:linear-gradient(90deg,var(--pri),var(--pri2))"></div></div>
+    ${pasos.map(x => `<div class="paso ${x[0] ? 'hecho' : ''}" ${x[0] ? '' : `onclick="${x[2]}"`}><span>${x[0] ? '✅' : '⬜'}</span><span class="grow">${x[1]}</span>${x[0] ? '' : '<span class="sub">›</span>'}</div>`).join('')}</div>`;
+  h += `<div class="kpis">
+    <div class="kpi" onclick="irA('agenda')"><b>${deHoy.length}</b><span>Citas hoy</span></div>
+    <div class="kpi" onclick="A.modo='lista';irA('agenda')"><b style="color:${pend.length ? '#d97706' : 'var(--pri)'}">${pend.length}</b><span>Por confirmar</span></div>
+    <div class="kpi"><b>${esc(peso(ingresos))}</b><span>Cobrado este mes</span></div>
+    <div class="kpi" onclick="irA('pacientes')"><b>${nPac}</b><span>Pacientes</span></div></div>`;
+  if (porCobrar) h += `<div class="aviso warn">💵 Tienes <b>${esc(peso(porCobrar))}</b> por cobrar de sesiones atendidas este mes.</div>`;
+  if (prox) {
+    const min = Math.round((new Date(prox.inicio) - ahora) / 60000), pp = prox.pacientes || {};
+    const cuando = min <= 0 ? 'En curso ahora' : min < 60 ? `En ${min} min` : bog(prox.inicio).ymd === hoy ? `Hoy a las ${hora(prox.inicio)}` : fecha(prox.inicio, { weekday: 'long', day: 'numeric' }) + ' · ' + hora(prox.inicio);
+    h += `<div class="card prox" onclick="detalleCita('${prox.id}')"><div class="sub" style="font-weight:700;color:var(--pri)">⏭️ PRÓXIMA CITA · ${esc(cuando)}</div>
+      <div class="row" style="margin-top:8px"><div class="grow"><b style="font-size:17px">${esc(pp.nombres || 'Paciente')}</b><div class="sub">${esc((prox.servicios || {}).nombre || 'Cita')} · ${esc(hora(prox.inicio))} – ${esc(hora(prox.fin))}</div></div>
+      <span class="badge ${(ESTADOS[prox.estado] || [])[1]}">${(ESTADOS[prox.estado] || [])[0]}</span></div>
+      <div class="acciones" onclick="event.stopPropagation()">${/^https:\/\//.test(prox.enlace_virtual || '') ? `<a class="btn sm" target="_blank" rel="noopener" href="${esc(prox.enlace_virtual)}">🎥 Entrar</a>` : ''}
+      ${pp.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(prox))}">💬 Recordar</a>` : ''}
+      <button class="btn sm ghost" onclick="abrirFicha('${prox.paciente_id}')">🗂️ Ficha</button></div></div>`;
+  }
+  h += `<h2>Tu día</h2>`;
+  h += deHoy.length ? deHoy.map(c => { const e = ESTADOS[c.estado] || ['', 'b-gris'];
+    return `<div class="card tap" style="cursor:pointer;margin-bottom:8px" onclick="detalleCita('${c.id}')"><div class="row"><div style="font-weight:800;color:var(--pri);min-width:72px">${esc(hora(c.inicio))}</div>
+      <div class="grow"><b>${esc((c.pacientes || {}).nombres || 'Paciente')}</b><div class="sub">${esc((c.servicios || {}).nombre || 'Cita')}</div></div><span class="badge ${e[1]}">${e[0]}</span></div></div>`; }).join('')
+    : `<div class="empty">☕ No tienes citas hoy.${p.slug ? '<br>Buen momento para compartir tu página de reservas.' : ''}</div>`;
+  h += `<h2>Accesos rápidos</h2><div class="rapidos">
+    <button onclick="formCita({fecha:hoyYMD()})"><i>📅</i>Agendar cita</button>
+    <button onclick="irA('pacientes');setTimeout(()=>{ if(C.dk) formPaciente() },500)"><i>👤</i>Nuevo paciente</button>
+    <button onclick="irA('agenda')"><i>🗓️</i>Ver agenda</button>
+    ${p.slug ? `<button onclick="copiar(enlaceReservas())"><i>🔗</i>Copiar mi enlace</button>` : `<button onclick="irA('perfil')"><i>🔗</i>Crear mi enlace</button>`}</div>`;
+  h += `<div class="card" style="margin-top:14px;background:#f5f3ff"><b>💡 Consejo para tu consulta</b><p style="font-size:14px;margin-top:6px;line-height:1.5">${esc(TIPS_PRO[dia % TIPS_PRO.length])}</p></div>`;
+  box.innerHTML = h;
 }
 
 /* --- AGENDA (calendario tipo Google) --- */
