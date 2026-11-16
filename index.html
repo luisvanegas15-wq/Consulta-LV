@@ -87,6 +87,9 @@ a.dircard{display:block;color:inherit;text-decoration:none}
 .wrap.pub{max-width:920px}
 .pub-barra{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-radius:14px;padding:8px 10px;margin:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:13px;line-height:1.3}
 .pub-barra small{color:var(--sub)}
+.hc-sec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 12px 10px;margin-top:10px}
+.hc-sec summary{cursor:pointer;font-weight:800;color:var(--pri);padding:8px 0;font-size:14px}
+.guia{font-size:14px;line-height:1.6}.guia ul,.guia ol{padding-left:20px;margin:6px 0}.guia li{margin-bottom:5px}.guia p{margin:6px 0}
 .cg-bloq{position:absolute;left:0;right:0;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);border-radius:6px;z-index:1;cursor:pointer;overflow:hidden}
 .cg-bloq span{display:block;position:sticky;top:0;background:rgba(241,245,249,.9);font-size:11px;font-weight:700;color:#475569;padding:3px 5px}
 .mes td button.fest{color:#dc2626}
@@ -188,7 +191,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.3';
+const VERSION = '3.4';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -607,7 +610,7 @@ function irA(v, sinHistoria){
   if ($('vista')) $('vista').classList.remove('ancha');
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (GRUPO[v] || v)));
   ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, finanzas: vistaFinanzas, mas: vistaMas, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil,
-     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas })[v]();
+     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia })[v]();
   window.scrollTo(0, 0); actualizarAtras();
 }
 
@@ -853,6 +856,7 @@ function detalleCita(id){
     ${c.estado === 'pendiente' ? `<button class="btn sm" onclick="estadoCita('${c.id}','confirmada')">✓ Confirmar</button>` : ''}
     ${pa.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(c))}">💬 Recordar</a>` : ''}
     ${/^https:\/\//.test(c.enlace_virtual || '') ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(c.enlace_virtual)}">🎥 Entrar</a>` : ''}
+    ${c.estado !== 'cancelada' && c.estado !== 'no_asistio' && new Date(c.inicio) <= new Date(Date.now() + 3600000) ? `<button class="btn sm" onclick="terminarConsulta('${c.id}')">✅ Terminar consulta</button>` : ''}
     <button class="btn sm ghost" onclick="cerrarModal();abrirFicha('${c.paciente_id}')">🗂️ Ver ficha</button>
     <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceGoogleCal('Cita: ' + (pa.nombres || 'Paciente'), c.inicio, c.fin, (c.servicios || {}).nombre || '', ''))}">📅 A mi calendario</a>
     <button class="btn sm ${c.pagado ? '' : 'ghost'}" onclick="${c.pagado ? `pagoCita('${c.id}',false)` : `elegirPago('${c.id}')`}">${c.pagado ? '✓ Pagada' : '💵 Marcar pagada'}</button>
@@ -1261,24 +1265,24 @@ function pintarFicha(){
     ${ult ? `<div class="sub">📅 Próxima: ${esc(fecha(ult.inicio,{weekday:'short',day:'numeric',month:'short'}))} ${esc(hora(ult.inicio))}</div>` : ''}</div></div>
     ${!p.consentimiento_at ? `<div class="aviso warn" style="margin-top:10px">Falta registrar el consentimiento informado de este paciente.</div>` : ''}
     <div class="acciones">
-      <button class="btn sm" onclick="formNota()">📝 Nota</button>
+      ${historiaActual() ? `<button class="btn sm" onclick="formNota()">📝 Nota de evolución</button>` : `<button class="btn sm" onclick="formHistoria()">📋 Crear historia clínica</button>`}
       <button class="btn sm ghost" onclick="formEscala('PHQ-9')">PHQ-9</button>
       <button class="btn sm ghost" onclick="formEscala('GAD-7')">GAD-7</button>
       <button class="btn sm ghost" onclick="formCita({pacId:P.actual.id,nombre:P.actual.nombres,volver:'ficha'})">📅 Agendar</button>
       ${p.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.telefono)}">💬</a>` : ''}
-      <button class="btn sm ghost" onclick="exportarHistoria()">📄 PDF</button>
+      <button class="btn sm ghost" onclick="exportarHistoria()">📄 Historia clínica</button>
     </div></div>
-  <div class="tabs">${[['notas','Notas (' + P.notas.length + ')'],['escalas','Escalas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
+  <div class="tabs">${[['historia','Historia' + (historiaActual() ? '' : ' ⚠️')],['notas','Evolución (' + P.notas.filter(n => !esHC(n)).length + ')'],['escalas','Escalas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
   <div id="ficha-c"></div>`;
-  ({ notas: tabNotas, escalas: tabEscalas, archivos: tabArchivos, citas: tabCitas, datos: tabDatos })[P.tab]();
+  ({ historia: tabHistoria, notas: tabNotas, escalas: tabEscalas, archivos: tabArchivos, citas: tabCitas, datos: tabDatos })[P.tab]();
 }
 const RIESGO = { ninguno: ['Sin riesgo identificado', 'b-ok'], bajo: ['Riesgo bajo', 'b-conf'], medio: ['Riesgo medio', 'b-pend'], alto: ['Riesgo alto', 'b-bad'] };
 const TIPOS_NOTA = { primera: 'Primera consulta', seguimiento: 'Seguimiento', cierre: 'Cierre', otra: 'Otra' };
 const CAMPOS_NOTA = [['motivo', 'Motivo de consulta / tema de la sesión'], ['observaciones', 'Observaciones y estado mental'], ['intervencion', 'Intervención realizada'], ['plan', 'Plan y tareas para el paciente']];
 function tabNotas(){
-  const c = $('ficha-c');
-  if (!P.notas.length) { c.innerHTML = `<div class="empty">Sin notas aún. Toca "📝 Nota" para escribir la primera.</div>`; return; }
-  c.innerHTML = P.notas.map(n => {
+  const c = $('ficha-c'), ns = P.notas.filter(n => !esHC(n));
+  if (!ns.length) { c.innerHTML = `<div class="empty">Sin notas de evolución aún. Después de cada sesión toca "📝 Nota de evolución" o, en la Agenda, "✅ Terminar consulta".</div>`; return; }
+  c.innerHTML = ns.map(n => {
     if (!n.d) return `<div class="card"><div class="aviso err">No se pudo descifrar esta nota.</div></div>`;
     const r = RIESGO[n.d.riesgo] || RIESGO.ninguno;
     return `<div class="card nota"><div class="row"><div class="grow"><b>${esc(fecha(n.fecha + 'T12:00:00Z',{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</b><div class="sub">${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')}${n.d.plantilla ? ' · 📋 ' + esc(n.d.plantilla) : ''}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
@@ -1296,17 +1300,19 @@ function htmlCamposNota(d){
 function elegirPlantilla(id){
   const hay = [...document.querySelectorAll('#nt-campos textarea')].some(t => t.value.trim());
   if (hay && !confirm('Cambiar de formato borra lo que llevas escrito en esta nota. ¿Continuar?')) { $('nt-pl').value = NF.id || ''; return; }
-  const pl = (P.plantillas || []).find(x => x.id === id);
+  const pl = PLANT_BASE.concat(P.plantillas || []).find(x => x.id === id);
   NF.id = id; NF.campos = pl ? pl.campos : null; NF.plantilla = pl ? pl.nombre : '';
   $('nt-campos').innerHTML = htmlCamposNota({});
 }
-async function formNota(id){
-  const n = P.notas.find(x => x.id === id), d = (n && n.d) || { tipo: P.notas.length ? 'seguimiento' : 'primera', riesgo: 'ninguno' };
-  const pls = n ? [] : await cargarPlantillas();
+async function formNota(id, o){
+  o = o || {};
+  const n = P.notas.find(x => x.id === id), d = (n && n.d) || { tipo: P.notas.some(x => !esHC(x)) || historiaActual() ? 'seguimiento' : 'primera', riesgo: 'ninguno' };
+  const pls = n ? [] : PLANT_BASE.concat(await cargarPlantillas());
+  NF.citaId = o.citaId || null;
   NF.id = ''; NF.campos = d.campos ? d.campos.map(f => f[0]) : null; NF.plantilla = d.plantilla || '';
   abrirModal(`<h3>${n ? 'Editar' : 'Nueva'} nota · ${esc(P.actual.nombres)}</h3>
   <div class="aviso info" style="font-size:13px">🎙️ Puedes <b>dictar</b>: toca el micrófono de tu teclado dentro de cada campo. 🔒 La nota se cifra antes de salir de tu celular.</div>
-  <div class="fila"><div><label>Fecha</label><input id="nt-fecha" type="date" value="${esc((n && n.fecha) || hoyYMD())}"></div>
+  <div class="fila"><div><label>Fecha</label><input id="nt-fecha" type="date" value="${esc((n && n.fecha) || o.fecha || hoyYMD())}"></div>
   <div><label>Tipo</label><select id="nt-tipo">${Object.entries(TIPOS_NOTA).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div></div>
   ${pls.length ? `<label>Formato</label><select id="nt-pl" onchange="elegirPlantilla(this.value)"><option value="">Estándar</option>${pls.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}</select>` : ''}
   <div id="nt-campos">${htmlCamposNota(d)}</div>
@@ -1325,10 +1331,11 @@ async function guardarNota(id){
   if (!camposDeNota(d).length) { toast('Escribe al menos un campo', true); return; }
   if ((d.riesgo === 'alto' || d.riesgo === 'medio') && !d.acciones_riesgo) { toast('Registra las acciones realizadas frente al riesgo', true); return; }
   $('nt-btn').disabled = true;
-  const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('nt-fecha').value || hoyYMD() }, await cifrar(d));
+  if (d.plantilla === 'Cierre del proceso (epicrisis)') d.tipo = 'cierre';
+  const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('nt-fecha').value || hoyYMD() }, NF.citaId ? { cita_id: NF.citaId } : {}, await cifrar(d));
   const r = id ? await sb.from('notas_clinicas').update(fila).eq('id', id) : await sb.from('notas_clinicas').insert(fila);
   if (r.error) { $('nt-btn').disabled = false; toast(mensajeError(r.error), true); return; }
-  cerrarModal(); toast('Nota guardada 🔒'); P.tab = 'notas'; abrirFicha(P.actual.id);
+  NF.citaId = null; cerrarModal(); toast('Nota guardada 🔒'); P.tab = 'notas'; abrirFicha(P.actual.id);
 }
 
 /* --- ESCALAS --- */
@@ -1477,7 +1484,8 @@ function exportarHistoria(){
   if (!w) { toast('Permite las ventanas emergentes para exportar', true); return; }
   sb.rpc('registrar_acceso', { p_tabla: 'exportacion', p_id: P.actual.id });
   const p = P.actual, pr = S.prof;
-  const notas = [...P.notas].reverse().map(n => !n.d ? '' : `<div class="n"><h3>${esc(n.fecha)} · ${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')} · ${esc((RIESGO[n.d.riesgo] || RIESGO.ninguno)[0])}</h3>
+  const hcN = historiaActual(), ev = P.notas.filter(n => !esHC(n));
+  const notas = [...ev].reverse().map(n => !n.d ? '' : `<div class="n"><h3>${esc(n.fecha)} · ${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')} · ${esc((RIESGO[n.d.riesgo] || RIESGO.ninguno)[0])}</h3>
     ${camposDeNota(n.d).map(f => `<b>${esc(f[0])}:</b><p>${esc(f[1])}</p>`).join('')}${n.d.acciones_riesgo ? `<b>Acciones frente al riesgo:</b><p>${esc(n.d.acciones_riesgo)}</p>` : ''}</div>`).join('');
   const esc_ = P.escalas.filter(x => x.d).map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${x.d.total}</td><td>${esc(x.d.nivel)}</td></tr>`).join('');
   w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Historia clínica - ${esc(p.nombres)}</title>
@@ -1490,8 +1498,10 @@ function exportarHistoria(){
   <tr><th>Nacimiento</th><td>${esc(p.fecha_nacimiento || '—')}</td><th>Celular</th><td>${esc(p.telefono || '—')}</td></tr>
   <tr><th>Correo</th><td>${esc(p.email || '—')}</td><th>Contacto emergencia</th><td>${esc(p.contacto_emergencia || '—')}</td></tr>
   <tr><th>Autorización datos</th><td>${esc(p.autorizacion_datos_at || 'sin registrar')}</td><th>Consentimiento</th><td>${esc(p.consentimiento_at || 'sin registrar')}</td></tr></table>
-  <h2>Evolución (${P.notas.length} notas)</h2>${notas || '<p>Sin notas.</p>'}
+  <h2>Historia clínica de ingreso${hcN ? ' · ' + esc(hcN.fecha) : ''}</h2>${hcN ? hcHTML(hcN.d.hc || {}) + `<h3>9. Valoración del riesgo</h3><p>${esc((RIESGO[hcN.d.riesgo] || RIESGO.ninguno)[0])}${hcN.d.acciones_riesgo ? ' · ' + esc(hcN.d.acciones_riesgo) : ''}</p>` + (hcN.d.borrador ? '<p><i>(Borrador sin finalizar)</i></p>' : '') : '<p>Sin historia de ingreso registrada.</p>'}
+  <h2>Evolución (${ev.length} notas)</h2>${notas || '<p>Sin notas.</p>'}
   <h2>Escalas aplicadas</h2>${esc_ ? `<table><tr><th>Fecha</th><th>Escala</th><th>Puntaje</th><th>Nivel</th></tr>${esc_}</table>` : '<p>Sin escalas.</p>'}
+  <table style="margin-top:36px;border:0"><tr><td style="border:0;width:50%">_______________________________<br><b>${esc(pr.nombre)}</b><br>${esc(pr.titulo || 'Psicólogo(a)')}${pr.tarjeta_profesional ? '<br>T.P. ' + esc(pr.tarjeta_profesional) : ''}</td><td style="border:0"></td></tr></table>
   <div class="pie">Generado el ${esc(new Date().toLocaleString('es-CO', { timeZone: TZ }))} con Consulta LV (LV Studio). Información sujeta a reserva (Ley 1090 de 2006, Ley 1581 de 2012, Res. 1995 de 1999 y 839 de 2017). Su divulgación no autorizada está prohibida.</div>
   <script>window.onload=function(){window.print()}<\/script></body></html>`);
   w.document.close();
@@ -1500,7 +1510,7 @@ function exportarHistoria(){
 /* =========================================================
    v3 · MÁS, FINANZAS, ESPERA, RESEÑAS, PLANTILLAS, ADJUNTOS, HABEAS
    ========================================================= */
-const GRUPO = { servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
+const GRUPO = { guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
 function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = azar(16); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128; const h = [...b].map(x => x.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
 function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
 function urlPublica(q){ return location.origin + location.pathname + q; }
@@ -1636,6 +1646,184 @@ async function quitarBloqueo(id){
   toast('Disponible de nuevo ✅'); if (S.vista === 'agenda') cargarAgenda(); else vistaHorarios();
 }
 
+/* =========================================================
+   HISTORIA CLÍNICA PSICOLÓGICA, GUÍA Y FORMATOS
+   ========================================================= */
+const HC = [
+  ['ident', '1. Datos complementarios', [['sexo', 'Sexo / identidad de género'], ['estado_civil', 'Estado civil'], ['escolaridad', 'Escolaridad'], ['ocupacion', 'Ocupación'],
+    ['residencia', 'Dirección o lugar de residencia'], ['eps', 'EPS / aseguradora'], ['acompanante', 'Acompañante o responsable (obligatorio en menores de edad)'], ['remitido', 'Remitido por', 'Ej: consulta voluntaria, médico general, colegio']]],
+  ['motivo', '2. Motivo de consulta', [['motivo', 'En palabras del consultante', '“…”', 1]]],
+  ['problema', '3. Historia del problema actual', [['problema', 'Inicio, evolución, desencadenantes e intentos de solución', '', 1]]],
+  ['antecedentes', '4. Antecedentes', [['ant_medicos', 'Médicos, quirúrgicos y medicamentos actuales', '', 1], ['ant_psico', 'Psicológicos y psiquiátricos (tratamientos u hospitalizaciones previas)', '', 1],
+    ['ant_sustancias', 'Consumo de alcohol, tabaco u otras sustancias', '', 1], ['ant_familiares', 'Antecedentes familiares de salud mental y física', '', 1]]],
+  ['personal', '5. Historia personal y familiar', [['desarrollo', 'Desarrollo, vida escolar y laboral', '', 1], ['familia', 'Estructura y dinámica familiar, red de apoyo', '', 1], ['social', 'Pareja, vida social y lo demás pertinente', '', 1]]],
+  ['mental', '6. Examen mental', [['em_apariencia', 'Apariencia y conducta', 'Ej: adecuada presentación personal, colaborador'], ['em_conciencia', 'Conciencia y orientación', 'Ej: alerta, orientado en tiempo, lugar y persona'],
+    ['em_atencion', 'Atención y memoria', 'Ej: conservadas'], ['em_pensamiento', 'Lenguaje y pensamiento (curso y contenido)', 'Ej: lenguaje fluido, pensamiento lógico y coherente'], ['em_percepcion', 'Sensopercepción', 'Ej: sin alteraciones'],
+    ['em_afecto', 'Afecto y estado de ánimo', 'Ej: ansioso, congruente con el discurso'], ['em_juicio', 'Juicio, introspección y prospección', 'Ej: conservados']]],
+  ['dx', '7. Impresión diagnóstica', [['dx', 'Impresión diagnóstica (CIE-10 / CIE-11 / DSM-5-TR)', 'Ej: F41.1 Trastorno de ansiedad generalizada (provisional)', 1], ['dx_dif', 'Diagnóstico diferencial']]],
+  ['plan', '8. Plan de intervención', [['objetivos', 'Objetivos terapéuticos', '', 1], ['enfoque', 'Enfoque y técnicas', 'Ej: cognitivo conductual: psicoeducación, reestructuración, exposición'],
+    ['frecuencia', 'Frecuencia y número estimado de sesiones', 'Ej: semanal, 10 a 12 sesiones'], ['recomendaciones', 'Recomendaciones y remisiones', '', 1]]]];
+const PLANT_BASE = [
+  { id: 'b-cierre', nombre: 'Cierre del proceso (epicrisis)', campos: ['Resumen del proceso terapéutico', 'Logros frente a los objetivos', 'Estado del paciente al egreso', 'Motivo del cierre', 'Recomendaciones y seguimiento'] },
+  { id: 'b-remision', nombre: 'Remisión / interconsulta', campos: ['Profesional o servicio al que se remite', 'Motivo de la remisión', 'Resumen clínico pertinente', 'Pregunta o solicitud concreta'] },
+  { id: 'b-soap', nombre: 'Evolución SOAP', campos: ['S · Subjetivo (lo que reporta el paciente)', 'O · Objetivo (lo observado, escalas)', 'A · Análisis (avance frente a objetivos)', 'P · Plan (próximos pasos y tareas)'] }];
+const esHC = n => n.d && n.d.tipo === 'historia';
+function historiaActual(){ return P.notas.find(esHC); }
+function tabHistoria(){
+  const c = $('ficha-c'), h = historiaActual();
+  if (!h) { c.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:40px">📋</div><h3>Historia clínica de ingreso</h3>
+    <p class="mini" style="margin-bottom:12px">Se llena en la primera consulta: datos complementarios, motivo de consulta, antecedentes, examen mental, impresión diagnóstica, valoración del riesgo y plan. Las sesiones siguientes se registran como notas de evolución.</p>
+    <button class="btn full" onclick="formHistoria()">📋 Crear historia clínica</button></div>`; return; }
+  const d = h.d.hc || {}, r = RIESGO[h.d.riesgo] || RIESGO.ninguno;
+  c.innerHTML = `<div class="card nota"><div class="row"><div class="grow"><b>Historia de ingreso</b><div class="sub">${esc(fecha(h.fecha + 'T12:00:00Z', { day: 'numeric', month: 'long', year: 'numeric' }))}${h.d.borrador ? ' · <span style="color:#d97706;font-weight:700">Borrador</span>' : ''}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
+    ${HC.map(([k, t, fs]) => { const vs = fs.filter(f => d[f[0]]); if (!vs.length) return ''; return `<h4>${esc(t)}</h4>` + vs.map(f => fs.length > 1 ? `<p><b>${esc(f[1])}:</b> ${esc(d[f[0]])}</p>` : `<p>${esc(d[f[0]])}</p>`).join(''); }).join('')}
+    ${h.d.acciones_riesgo ? `<h4>Acciones frente al riesgo</h4><p>${esc(h.d.acciones_riesgo)}</p>` : ''}
+    <div class="acciones"><button class="btn sm ghost" onclick="formHistoria('${h.id}')">✏️ Editar</button><button class="btn sm" onclick="exportarHistoria()">📄 Generar historia clínica</button></div></div>`;
+}
+function formHistoria(id, o){
+  o = o || {}; const n = P.notas.find(x => x.id === id), d = (n && n.d && n.d.hc) || {}, p = P.actual;
+  NF.citaId = o.citaId || (n && n.cita_id) || null;
+  abrirModal(`<h3>📋 Historia clínica · ${esc(p.nombres)}</h3>
+  <div class="aviso info" style="font-size:13px">Llena lo que aplique; puedes guardar un <b>borrador</b> y completarlo después. 🎙️ Puedes dictar con el micrófono del teclado. 🔒 Todo se cifra en tu dispositivo.</div>
+  <div class="card" style="background:#f8fafc;font-size:13px;line-height:1.6"><b>${esc(p.nombres)}</b> · CC ${esc(p.documento)}${p.fecha_nacimiento ? ' · ' + esc(p.fecha_nacimiento) + ' (' + edad(p.fecha_nacimiento) + ')' : ''}<br>
+    📱 ${esc(p.telefono || '—')} · 🆘 ${esc(p.contacto_emergencia || 'sin contacto de emergencia')}<br>
+    Consentimiento: ${p.consentimiento_at ? '✅ registrado' : '<b style="color:var(--bad)">sin registrar</b>'} · Autorización de datos: ${p.autorizacion_datos_at ? '✅' : '<b style="color:var(--bad)">sin registrar</b>'}</div>
+  <label>Fecha de la consulta</label><input id="hc-fecha" type="date" value="${esc((n && n.fecha) || o.fecha || hoyYMD())}">
+  ${HC.map(([k, t, fs], i) => `<details class="hc-sec" ${i < 3 ? 'open' : ''}><summary>${esc(t)}</summary>
+    ${fs.map(f => `<label>${esc(f[1])}</label>${f[3] ? `<textarea id="hc-${f[0]}" maxlength="6000" placeholder="${esc(f[2] || '')}">${esc(d[f[0]])}</textarea>` : `<input id="hc-${f[0]}" maxlength="300" placeholder="${esc(f[2] || '')}" value="${esc(d[f[0]])}">`}`).join('')}</details>`).join('')}
+  <details class="hc-sec" open><summary>9. Valoración del riesgo (obligatoria)</summary>
+  <label>Riesgo suicida, de autolesión o de agresión</label><select id="nt-riesgo" onchange="$('nt-acc-box').style.display=(this.value==='medio'||this.value==='alto')?'block':'none'">${Object.entries(RIESGO).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
+  <div id="nt-acc-box" style="display:${n && (n.d.riesgo === 'medio' || n.d.riesgo === 'alto') ? 'block' : 'none'}"><div class="aviso err" style="margin-top:10px;font-size:13px"><b>Protocolo sugerido:</b> indaga ideación, plan y medios · plan de seguridad · activa la red de apoyo · si es inminente, urgencias o Línea 106 / 123 · documenta.</div>
+  <label>Acciones realizadas frente al riesgo</label><textarea id="nt-acc" maxlength="3000">${esc(n ? n.d.acciones_riesgo : '')}</textarea></div></details>
+  <button class="btn full" id="hc-btn" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},false)">Guardar historia clínica</button>
+  <button class="btn full ghost" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},true)">Guardar borrador</button>
+  <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+  $('nt-riesgo').value = (n && n.d.riesgo) || 'ninguno';
+}
+async function guardarHistoria(id, borrador){
+  const hc = {}; HC.forEach(([k, t, fs]) => fs.forEach(f => { const v = $('hc-' + f[0]).value.trim(); if (v) hc[f[0]] = v; }));
+  const d = { tipo: 'historia', hc, riesgo: $('nt-riesgo').value, acciones_riesgo: $('nt-acc').value.trim(), borrador: !!borrador };
+  if (!Object.keys(hc).length) { toast('Escribe al menos un campo', true); return; }
+  if (!borrador) {
+    const falta = [['motivo', 'el motivo de consulta'], ['dx', 'la impresión diagnóstica'], ['objetivos', 'los objetivos terapéuticos']].find(f => !hc[f[0]]);
+    if (falta) { toast(`Falta ${falta[1]}. Complétalo o guarda como borrador`, true); return; }
+  }
+  if ((d.riesgo === 'alto' || d.riesgo === 'medio') && !d.acciones_riesgo) { toast('Registra las acciones realizadas frente al riesgo', true); return; }
+  $('hc-btn').disabled = true;
+  const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('hc-fecha').value || hoyYMD() }, NF.citaId ? { cita_id: NF.citaId } : {}, await cifrar(d));
+  const r = id ? await sb.from('notas_clinicas').update(fila).eq('id', id) : await sb.from('notas_clinicas').insert(fila);
+  if (r.error) { $('hc-btn').disabled = false; toast(mensajeError(r.error), true); return; }
+  NF.citaId = null; cerrarModal(); toast(borrador ? 'Borrador guardado 🔒' : 'Historia clínica guardada 🔒'); P.tab = 'historia'; abrirFicha(P.actual.id);
+}
+async function terminarConsulta(citaId){
+  const c = A.citas.find(x => x.id === citaId); if (!c) return;
+  if (c.estado !== 'asistio') { const { error } = await sb.from('citas').update({ estado: 'asistio' }).eq('id', citaId); if (error) { toast(mensajeError(error), true); return; } c.estado = 'asistio'; }
+  cerrarModal();
+  if (!C.dk) { toast('Asistencia registrada. Desbloquea tus historias para escribir la nota'); }
+  await abrirFicha(c.paciente_id);
+  if (!P.actual || P.actual.id !== c.paciente_id) return;
+  const f = bog(c.inicio).ymd, h = historiaActual();
+  if (!h) { P.tab = 'historia'; pintarFicha(); formHistoria(null, { citaId, fecha: f }); }
+  else { P.tab = 'notas'; pintarFicha(); formNota(null, { citaId, fecha: f }); }
+}
+function hcHTML(d){
+  return HC.map(([k, t, fs]) => { const vs = fs.filter(f => d[f[0]]); if (!vs.length) return ''; return `<h3>${esc(t)}</h3>` + vs.map(f => fs.length > 1 ? `<p><b>${esc(f[1])}:</b> ${esc(d[f[0]])}</p>` : `<p>${esc(d[f[0]])}</p>`).join(''); }).join('');
+}
+
+/* --- GUÍA DE CONSULTA --- */
+function vistaGuia(){
+  const s = (t, h, open) => `<details class="hc-sec guia" ${open ? 'open' : ''}><summary>${t}</summary>${h}</details>`;
+  $('vista').innerHTML = `<h2>📘 Guía de consulta</h2><p class="mini" style="margin:-4px 0 10px">Paso a paso para atender cumpliendo la norma colombiana. Es una guía práctica; ante dudas legales consulta al Colegio Colombiano de Psicólogos.</p>
+  ${s('📂 Documentos que debes solicitar', `<ul>
+    <li><b>Documento de identidad</b> del paciente (cédula, tarjeta de identidad o registro civil).</li>
+    <li><b>Menores de edad:</b> documento del menor y de su representante legal; el consentimiento lo firma el representante y el menor da su <b>asentimiento</b> (Ley 1098 de 2006).</li>
+    <li><b>Remisión</b> u orden médica, si viene remitido.</li>
+    <li>Informes, valoraciones o resultados de <b>tratamientos previos</b>, si los tiene.</li>
+    <li>Lista de <b>medicamentos actuales</b> y médico tratante.</li>
+    <li><b>Contacto de emergencia</b> (nombre, parentesco y celular).</li>
+    <li>Datos de <b>EPS</b> o aseguradora, si aplica.</li></ul>
+    <p><b>Documentos que debe firmar</b> antes de iniciar (abajo puedes imprimirlos):</p>
+    <ul><li>Autorización de tratamiento de datos personales (Ley 1581 de 2012).</li><li>Consentimiento informado (Ley 1090 de 2006).</li><li>Consentimiento para atención virtual, si es por videollamada.</li><li>Asentimiento, si es menor de edad.</li></ul>
+    <p class="mini">Si el paciente reservó por tu página, la autorización de datos y el consentimiento ya quedaron aceptados y registrados con fecha y hora en su ficha.</p>`, true)}
+  ${s('🟢 Primera consulta paso a paso', `<ol>
+    <li>Verifica la <b>identidad</b> y que los documentos estén firmados.</li>
+    <li>Explica el <b>encuadre</b>: confidencialidad y sus límites, duración y frecuencia, honorarios, cancelaciones e inasistencias.</li>
+    <li>Haz la <b>entrevista</b>: motivo de consulta, historia del problema, antecedentes e historia personal y familiar.</li>
+    <li>Realiza el <b>examen mental</b> y, si aplica, tamizajes (PHQ-9 para depresión, GAD-7 para ansiedad), desde la ficha.</li>
+    <li><b>Valora el riesgo</b> (suicida, autolesión, violencia). Es obligatorio dejarlo registrado.</li>
+    <li>Acuerda los <b>objetivos</b> y el plan de intervención con el paciente.</li>
+    <li>Al terminar, en la Agenda toca la cita → <b>"✅ Terminar consulta"</b>: se marca la asistencia y se abre la <b>historia clínica</b> para llenarla. Si no alcanzas, guarda un borrador.</li></ol>`)}
+  ${s('🔁 Sesiones de seguimiento', `<ul>
+    <li>Después de cada sesión toca <b>"✅ Terminar consulta"</b>: se abre la <b>nota de evolución</b> de esa cita. Puedes usar el formato <b>SOAP</b> o tus plantillas.</li>
+    <li>Escribe la nota el mismo día, mientras la sesión está fresca.</li>
+    <li>Repite el PHQ-9 o el GAD-7 cada 4 sesiones para medir el avance; la gráfica queda en la pestaña Escalas.</li>
+    <li>Registra las inasistencias: también hacen parte de la historia.</li>
+    <li>Si el riesgo sube, regístralo en la nota con las acciones realizadas.</li></ul>`)}
+  ${s('🏁 Cierre del proceso', `<ol>
+    <li>Escribe una nota con el formato <b>"Cierre del proceso (epicrisis)"</b>: resumen, logros, estado al egreso, motivo del cierre y recomendaciones.</li>
+    <li>Si remites a otro profesional, usa el formato <b>"Remisión / interconsulta"</b>.</li>
+    <li>En la ficha toca <b>"📄 Historia clínica"</b>: se genera el documento completo con identificación, consentimientos, historia de ingreso, escalas, evolución y cierre, listo para guardar en PDF o imprimir.</li>
+    <li>El paciente tiene derecho a pedir <b>copia de su historia clínica</b>; entrégala solo a él o a quien autorice por escrito.</li>
+    <li>La historia se conserva mínimo <b>15 años</b> desde la última atención (Res. 839 de 2017). La app no permite borrarla.</li></ol>`)}
+  ${s('🚨 Si hay riesgo', `<ul>
+    <li>Indaga ideación, plan, medios e intentos previos. No dejes sola a la persona si el riesgo es inminente.</li>
+    <li>Construye un plan de seguridad y activa la red de apoyo (contacto de emergencia).</li>
+    <li>Riesgo inminente: urgencias, <b>Línea 106</b> o <b>123</b>. Ante violencia contra menores: ICBF <b>141</b>.</li>
+    <li>El secreto profesional puede levantarse cuando hay riesgo grave para la vida (Ley 1090 de 2006).</li>
+    <li>Documenta todo en la nota, con las acciones realizadas.</li></ul>`)}
+  ${s('🔒 Cómo guarda la app tu información', `<ul>
+    <li>Notas, historia, escalas y archivos se <b>cifran en tu dispositivo</b> con tu clave clínica: ni LV Studio ni el servidor pueden leerlos.</li>
+    <li>Guarda tu <b>código de recuperación</b> en un lugar seguro: sin él y sin tu clave, la información no se puede recuperar.</li>
+    <li>Cada apertura de una ficha y cada exportación quedan registradas (auditoría).</li></ul>`)}
+  <h2>🖨️ Formatos para imprimir y firmar</h2>
+  <div class="menu-mas">
+    <button onclick="imprimirFormato('consentimiento')"><i>✍️</i><span class="grow"><b>Consentimiento informado</b><small>Atención psicológica presencial (Ley 1090 de 2006)</small></span><span class="sub">›</span></button>
+    <button onclick="imprimirFormato('virtual')"><i>💻</i><span class="grow"><b>Consentimiento de atención virtual</b><small>Telepsicología por videollamada</small></span><span class="sub">›</span></button>
+    <button onclick="imprimirFormato('datos')"><i>🛡️</i><span class="grow"><b>Autorización de tratamiento de datos</b><small>Ley 1581 de 2012</small></span><span class="sub">›</span></button>
+    <button onclick="imprimirFormato('asentimiento')"><i>🧒</i><span class="grow"><b>Asentimiento para menores de edad</b><small>Con firma del representante legal</small></span><span class="sub">›</span></button>
+    <button onclick="imprimirFormato('historia')"><i>📋</i><span class="grow"><b>Historia clínica en blanco</b><small>Para llenar a mano si no tienes el celular</small></span><span class="sub">›</span></button>
+  </div>`;
+}
+function textoVirtual(nombre){
+  return `<h3>Consentimiento informado para atención psicológica virtual</h3>
+  <p>Acepto recibir atención psicológica por videollamada con <b>${esc(nombre)}</b>, y entiendo que:</p>
+  <ul><li>La sesión se realiza por una plataforma de videollamada; debo conectarme desde un <b>lugar privado</b>, sin otras personas presentes salvo que lo acordemos.</li>
+  <li>Las sesiones <b>no se graban</b> sin autorización escrita de ambas partes.</li>
+  <li>Si la conexión falla, intentaremos reconectar; si no es posible, se reprogramará o continuará por llamada telefónica.</li>
+  <li>La atención virtual tiene limitaciones; si el profesional considera que necesito atención presencial o de urgencias, me lo indicará.</li>
+  <li>En una crisis debo comunicarme con la Línea 106, el 123 o acudir a urgencias, y doy como contacto de emergencia a la persona registrada en mi ficha.</li>
+  <li>La información está protegida por el secreto profesional y por la Ley 1581 de 2012.</li></ul>`;
+}
+function textoAsentimiento(nombre){
+  return `<h3>Asentimiento informado (menores de edad)</h3>
+  <p>Yo, el niño, niña o adolescente que firma abajo, entiendo que voy a hablar con <b>${esc(nombre)}</b>, psicólogo(a), para recibir ayuda.</p>
+  <ul><li>Me explicaron qué vamos a hacer en las sesiones y pude hacer preguntas.</li>
+  <li>Lo que cuente es privado. Solo se le contará a mis padres o a otras personas si mi vida o la de alguien más está en peligro.</li>
+  <li>Puedo decir cuando no quiera hablar de algo.</li></ul>
+  <p>Mi representante legal, que también firma, autorizó esta atención (Ley 1098 de 2006).</p>`;
+}
+function imprimirFormato(t){
+  const pr = S.prof, w = window.open('', '_blank');
+  if (!w) { toast('Permite las ventanas emergentes para imprimir', true); return; }
+  const firma = (a, b) => `<table class="f"><tr><td>${a}<br><br><br>_______________________________<br>Firma<br>Nombre: ____________________________<br>Documento: _________________________</td><td>${b}<br><br><br>_______________________________<br>Firma<br>Nombre: ____________________________<br>Documento: _________________________</td></tr></table>`;
+  const prof = `${esc(pr.nombre)} · ${esc(pr.titulo || 'Psicólogo(a)')}${pr.tarjeta_profesional ? ' · T.P. ' + esc(pr.tarjeta_profesional) : ''}`;
+  const cuerpo = {
+    consentimiento: textoConsentimiento(pr.nombre) + firma('Paciente o representante legal', 'Profesional: ' + prof),
+    virtual: textoVirtual(pr.nombre) + firma('Paciente o representante legal', 'Profesional: ' + prof),
+    datos: textoDatos(pr.nombre) + firma('Titular de los datos o representante legal', 'Responsable: ' + prof),
+    asentimiento: textoAsentimiento(pr.nombre) + firma('Niño, niña o adolescente', 'Representante legal (parentesco: __________)') + `<p>Profesional: ${prof} &nbsp; Firma: _______________________</p>`,
+    historia: `<h3>Historia clínica psicológica · Formato de ingreso</h3><table class="g"><tr><td>Nombre:</td><td></td><td>Documento:</td><td></td></tr><tr><td>Fecha de nacimiento / edad:</td><td></td><td>Celular:</td><td></td></tr><tr><td>Contacto de emergencia:</td><td colspan="3"></td></tr><tr><td>Fecha de la consulta:</td><td colspan="3"></td></tr></table>` +
+      HC.map(([k, tt, fs]) => `<h4>${esc(tt)}</h4>` + fs.map(f => `<p><b>${esc(f[1])}:</b></p><div class="l${f[3] ? ' g2' : ''}"></div>`).join('')).join('') +
+      `<h4>9. Valoración del riesgo</h4><p>☐ Sin riesgo identificado &nbsp; ☐ Bajo &nbsp; ☐ Medio &nbsp; ☐ Alto</p><p><b>Acciones realizadas:</b></p><div class="l g2"></div>` + `<p style="margin-top:24px">Profesional: ${prof} &nbsp; Firma: _______________________</p>`
+  }[t];
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${t}</title><style>body{font-family:Arial,sans-serif;font-size:12.5px;color:#111;margin:32px;line-height:1.5}h3{font-size:16px;color:#0e7490}h4{font-size:13px;margin:16px 0 4px;border-bottom:1px solid #0e7490}
+  .f{width:100%;margin-top:30px;border-collapse:collapse}.f td{width:50%;vertical-align:top;padding:8px}.g{width:100%;border-collapse:collapse}.g td{border:1px solid #999;padding:7px;height:18px}.l{border-bottom:1px solid #999;height:22px;margin-bottom:6px}.l.g2{height:70px;border:1px solid #bbb}
+  .enc{display:flex;justify-content:space-between;border-bottom:2px solid #0e7490;padding-bottom:8px;margin-bottom:10px}.pie{font-size:10px;color:#555;margin-top:24px}</style></head><body>
+  <div class="enc"><div><b>${prof}</b><br>${esc([pr.direccion, pr.ciudad].filter(Boolean).join(' · '))}${pr.whatsapp ? ' · Cel. ' + esc(pr.whatsapp) : ''}</div><div>Fecha: ____/____/______</div></div>
+  ${cuerpo}<div class="pie">Formato generado con Consulta LV (LV Studio). Documento con reserva legal.</div><script>window.onload=function(){window.print()}<\/script></body></html>`);
+  w.document.close();
+}
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -1667,6 +1855,7 @@ function vistaMas(){
     ['perfil','👤','Perfil, pagos y directorio','Lo que ven tus pacientes'],
     ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
     ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
+    ['guia','📘','Guía de consulta y formatos','Documentos a pedir, paso a paso y formatos para firmar'],
     ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
     ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)']];
   $('vista').innerHTML = `<h2>Más opciones</h2><div class="menu-mas">${items.map(x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`).join('')}</div>
@@ -2029,7 +2218,7 @@ function graciasResena(){
 
 const DIR = { q: '', ciudad: '', mod: '', t: null };
 function paginaDirectorio(){
-  app.innerHTML = `<header style="padding-bottom:26px"><small>Consulta LV</small><h1>Encuentra tu psicólogo</h1></header><div class="wrap" style="padding-bottom:70px">
+  app.innerHTML = `<header style="padding-bottom:26px"><small>Consulta LV</small><h1>Encuentra tu psicólogo</h1><button class="hbtn" onclick="if(history.length>1&&document.referrer)history.back();else location.href=urlPublica('')">← Volver</button></header><div class="wrap" style="padding-bottom:70px">
   <div class="card"><label>¿Con qué necesitas ayuda?</label><input id="d-q" maxlength="60" placeholder="Ej: ansiedad, duelo, pareja, niños" oninput="buscarDir()">
   <label>Ciudad</label><input id="d-ciudad" maxlength="60" placeholder="Ej: Cali" oninput="buscarDir()">
   <div class="chips" style="margin-top:10px">${[['', 'Todas'], ['virtual', '💻 Virtual'], ['presencial', '🏢 Presencial']].map(m => `<div class="chip ${DIR.mod === m[0] ? 'on' : ''}" data-m="${m[0]}" onclick="DIR.mod='${m[0]}';document.querySelectorAll('[data-m]').forEach(c=>c.classList.toggle('on',c.dataset.m===DIR.mod));buscarDir(true)">${m[1]}</div>`).join('')}</div></div>
