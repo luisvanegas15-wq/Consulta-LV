@@ -70,6 +70,20 @@ textarea{min-height:90px;resize:vertical}
 .rapidos button{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px 8px;font-size:13px;font-weight:600;color:var(--txt);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px}
 .rapidos i{font-style:normal;font-size:24px}
 nav button{font-size:10.5px}
+.menu-mas{display:flex;flex-direction:column;gap:8px}
+.menu-mas button{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:left;cursor:pointer;color:var(--txt);font-size:14px}
+.menu-mas i{font-style:normal;font-size:24px}.menu-mas small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
+.barras{display:flex;gap:6px;align-items:flex-end;height:150px;margin-top:10px}
+.bcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;cursor:pointer}
+.bcol span{font-size:11px;color:var(--sub)}.bcol.on span{color:var(--pri);font-weight:800}
+.bpar{flex:1;width:100%;display:flex;gap:3px;align-items:flex-end;justify-content:center}
+.bpar i{width:40%;max-width:22px;border-radius:5px 5px 0 0;min-height:2px}.bi{background:var(--pri)}.bg{background:#f87171}
+.bcol.on .bpar{background:#f0f9ff;border-radius:8px}
+.estrellas{display:flex;justify-content:center;gap:4px;margin:10px 0}
+.estrellas button{background:none;border:none;font-size:42px;color:#cbd5e1;cursor:pointer;padding:0 2px;line-height:1}.estrellas button.on{color:#f59e0b}
+.resena{border-top:1px solid var(--line);padding:10px 0}.resena p{font-size:14px;margin-top:6px;line-height:1.5;white-space:pre-wrap}
+.resp{background:#f0f9ff;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px}
+a.dircard{display:block;color:inherit;text-decoration:none}
 .agenda-l{display:grid;gap:14px;align-items:start}
 @media(min-width:900px){.agenda-l{grid-template-columns:280px minmax(0,1fr)}}
 .agenda-l>*{min-width:0}
@@ -157,7 +171,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '2.2';
+const VERSION = '3.0';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -215,6 +229,9 @@ function mensajeError(e){
   if (/exp_rango/i.test(m)) return 'Revisa los años de experiencia';
   if (/largos/i.test(m)) return 'Algún texto del perfil es demasiado largo';
   if (/OperationError/i.test(m)) return 'Clave incorrecta';
+  if (/pago_valido/i.test(m)) return 'El enlace de pago debe empezar por https://';
+  if (/Bucket not found/i.test(m)) return 'Falta ejecutar la actualización v3 de la base de datos';
+  if (/relation .* does not exist|schema cache/i.test(m)) return 'Falta ejecutar la actualización v3 de la base de datos';
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisa tu internet';
   return m;
 }
@@ -282,9 +299,10 @@ function pintarPublica(){
   <div class="perfil">${f ? `<img class="foto foto-g" src="${esc(f)}" alt="">` : `<div class="foto foto-g" style="display:inline-flex;align-items:center;justify-content:center;font-size:40px">🧠</div>`}
     <h1>${esc(p.nombre)}</h1>
     <div class="sub">${esc(p.titulo)}${p.tarjeta ? ' · T.P. ' + esc(p.tarjeta) : ''}${p.ciudad ? ' · ' + esc(p.ciudad) : ''}</div>
+    ${p.n_resenas ? `<div style="margin-top:6px;font-size:14px"><span style="color:#f59e0b">${estrellas(p.promedio)}</span> <b>${esc(p.promedio)}</b> · ${p.n_resenas} reseña${p.n_resenas > 1 ? 's' : ''} verificada${p.n_resenas > 1 ? 's' : ''}</div>` : ''}
     ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
   </div>
-  ${sobre}
+  ${sobre}${htmlResenasPublicas(p)}
   <h2>1. Elige el servicio</h2>`;
   if (!servs.length) h += `<div class="empty">Este profesional aún no tiene servicios disponibles.</div>`;
   servs.forEach(s => {
@@ -292,6 +310,7 @@ function pintarPublica(){
       <div class="row"><div class="grow"><b>${esc(s.nombre)}</b><div class="sub">${esc(s.duracion)} min · ${s.modalidad === 'virtual' ? '💻 Virtual' : s.modalidad === 'presencial' ? '🏢 Presencial' : '💻 Virtual o 🏢 presencial'}</div></div>
       <b style="color:var(--pri)">${s.precio ? peso(s.precio) : 'Consultar'}</b></div></div>`;
   });
+  if (servs.length) h += `<p class="mini" style="text-align:center">¿No encuentras un horario que te sirva? <a href="#" onclick="formEspera();return false">Únete a la lista de espera</a></p>`;
   if (R.serv) {
     h += `<h2>2. Elige el día</h2><div class="chips">`;
     for (let i = 0; i < 21; i++) {
@@ -300,7 +319,7 @@ function pintarPublica(){
     }
     h += `</div><h2>3. Elige la hora</h2><div id="horas"><div class="carga" style="padding:20px">Buscando horarios…</div></div><div id="form-reserva"></div>`;
   }
-  h += `<div class="pie">
+  h += htmlPagoPublico(p) + `<div class="pie">
     <a href="#" onclick="verLegal('datos');return false">Política de tratamiento de datos</a> ·
     <a href="#" onclick="formHabeas();return false">Mis derechos sobre mis datos</a><br>
     Plataforma segura de LV Studio · Consulta LV</div></div>
@@ -317,7 +336,7 @@ async function cargarHoras(){
   const box = $('horas'); if (!box) return;
   if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
   R.horas = (data || []).map(x => x.hora);
-  if (!R.horas.length) { box.innerHTML = `<div class="empty">No hay horarios libres este día. Prueba otro día.</div>`; return; }
+  if (!R.horas.length) { box.innerHTML = `<div class="empty">No hay horarios libres este día. Prueba otro día.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`; return; }
   box.innerHTML = `<div class="grid">${R.horas.map((t, i) => `<button class="slot ${R.hora === t ? 'on' : ''}" onclick="elegirHora(${i})">${esc(hora(t))}</button>`).join('')}</div>`;
   if (R.hora) pintarFormReserva();
 }
@@ -364,6 +383,7 @@ async function confirmarReserva(){
   app.innerHTML = `<header><h1>¡Cita reservada! ✅</h1></header><div class="wrap">
     <div class="card"><div class="aviso ok"><b>${esc(R.serv.nombre)}</b><br>📅 ${esc(cuando)}<br>👤 con ${esc(p.nombre)}</div>
     <p style="font-size:14px;line-height:1.5">Tu cita quedó <b>pendiente de confirmación</b>. ${esc(p.nombre)} te contactará para confirmarla${R.serv.precio ? ' y coordinar el pago' : ''}.</p>
+    ${R.serv.precio ? htmlPagoPublico(p).replace('class="card"', 'style="margin:12px 0"') : ''}
     ${p.whatsapp ? `<a class="btn full" href="https://wa.me/${waNum(p.whatsapp)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Avisar por WhatsApp</a>` : ''}
     <p class="mini">Si se te presenta una emergencia emocional, comunícate con la Línea 106 o el 123.</p></div></div>`;
 }
@@ -406,6 +426,7 @@ function pantallaAcceso(modo){
     <button class="btn full" id="a-btn" onclick="${modo==='crear'?'crearCuenta()':'ingresar()'}">${modo==='crear'?'Crear cuenta · 14 días gratis':'Ingresar'}</button>
     ${modo==='entrar' ? `<button class="btn full ghost" onclick="recuperar()">Olvidé mi contraseña</button>` : ''}
   </div>
+  <a class="btn full ghost" href="${esc(urlPublica('?dir=1'))}" style="margin-bottom:10px">🔎 ¿Buscas psicólogo? Ver directorio</a>
   <div class="pie">🔒 Conexión cifrada · Cada profesional ve solo a sus pacientes<br>Consulta LV v${VERSION} · LV Studio</div></div>`;
 }
 
@@ -475,11 +496,10 @@ function pintarPanel(){
     <button data-v="inicio"><i>🏠</i>Inicio</button>
     <button data-v="agenda"><i>📅</i>Agenda</button>
     <button data-v="pacientes"><i>🗂️</i>Pacientes</button>
-    <button data-v="servicios"><i>💼</i>Servicios</button>
-    <button data-v="horarios"><i>🕘</i>Horarios</button>
-    <button data-v="perfil"><i>👤</i>Perfil</button>
+    <button data-v="finanzas"><i>💰</i>Finanzas</button>
+    <button data-v="mas"><i>☰</i>Más</button>
   </nav>`;
-  document.querySelectorAll('nav button').forEach(b => { b.onclick = () => irA(b.dataset.v); b.classList.toggle('on', b.dataset.v === S.vista); });
+  document.querySelectorAll('nav button').forEach(b => { b.onclick = () => irA(b.dataset.v); b.classList.toggle('on', b.dataset.v === (GRUPO[S.vista] || S.vista)); });
   NAV.actual = { v: S.vista, d: 0 }; history.replaceState(NAV.actual, '');
   irA(S.vista, true);
 }
@@ -487,8 +507,9 @@ function irA(v, sinHistoria){
   if (!sinHistoria) empujar({ v });
   S.vista = v;
   if ($('vista')) $('vista').classList.remove('ancha');
-  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil })[v]();
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (GRUPO[v] || v)));
+  ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, finanzas: vistaFinanzas, mas: vistaMas, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil,
+     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas })[v]();
   window.scrollTo(0, 0); actualizarAtras();
 }
 
@@ -506,13 +527,15 @@ async function vistaInicio(){
     <div><h2 style="margin:0;font-size:22px">${saludo}${nombre ? ', ' + esc(nombre) : ''} 👋</h2><div class="sub" style="color:#e0f2fe">${esc(fh.charAt(0).toUpperCase() + fh.slice(1))}</div></div></div>
     <p class="bienv-f">“${esc(FRASES[dia % FRASES.length])}”</p></div>
   <div id="ini-c"><div class="carga" style="padding:30px">Preparando tu resumen…</div></div>`;
-  const [ci, sv, di, pa, ll] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+  const [ci, sv, di, pa, ll, le, hb] = await Promise.all([
+    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', mesIni + 'T00:00:00-05:00').lt('inicio', sumarDias(hoy, 8) + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('servicios').select('id').eq('activo', true),
     sb.from('disponibilidad').select('id'),
     sb.from('pacientes').select('id', { count: 'exact', head: true }),
-    sb.from('llaves').select('profesional_id').maybeSingle()]);
+    sb.from('llaves').select('profesional_id').maybeSingle(),
+    sb.from('lista_espera').select('id', { count: 'exact', head: true }).eq('estado', 'esperando'),
+    sb.from('solicitudes_habeas').select('id', { count: 'exact', head: true }).neq('estado', 'respondida')]);
   const box = $('ini-c'); if (!box) return;
   const err = ci.error || sv.error || di.error || pa.error;
   if (err) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(err))}</div>`; return; }
@@ -540,7 +563,10 @@ async function vistaInicio(){
     <div class="kpi" onclick="A.modo='lista';irA('agenda')"><b style="color:${pend.length ? '#d97706' : 'var(--pri)'}">${pend.length}</b><span>Por confirmar</span></div>
     <div class="kpi"><b>${esc(peso(ingresos))}</b><span>Cobrado este mes</span></div>
     <div class="kpi" onclick="irA('pacientes')"><b>${nPac}</b><span>Pacientes</span></div></div>`;
-  if (porCobrar) h += `<div class="aviso warn">💵 Tienes <b>${esc(peso(porCobrar))}</b> por cobrar de sesiones atendidas este mes.</div>`;
+  const nHab = hb.error ? 0 : hb.count ?? (hb.data || []).length, nEsp = le.error ? 0 : le.count ?? (le.data || []).length;
+  if (nHab) h += `<div class="aviso err" style="cursor:pointer" onclick="irA('habeas')">🛡️ Tienes <b>${nHab}</b> solicitud${nHab > 1 ? 'es' : ''} de datos sin responder. La ley da 10 a 15 días hábiles. Toca para verla${nHab > 1 ? 's' : ''}.</div>`;
+  if (nEsp) h += `<div class="aviso info" style="cursor:pointer" onclick="irA('espera')">⏳ <b>${nEsp}</b> persona${nEsp > 1 ? 's' : ''} en lista de espera. Toca para verla${nEsp > 1 ? 's' : ''}.</div>`;
+  if (porCobrar) h += `<div class="aviso warn" style="cursor:pointer" onclick="irA('finanzas')">💵 Tienes <b>${esc(peso(porCobrar))}</b> por cobrar de sesiones atendidas este mes.</div>`;
   if (prox) {
     const min = Math.round((new Date(prox.inicio) - ahora) / 60000), pp = prox.pacientes || {};
     const cuando = min <= 0 ? 'En curso ahora' : min < 60 ? `En ${min} min` : bog(prox.inicio).ymd === hoy ? `Hoy a las ${hora(prox.inicio)}` : fecha(prox.inicio, { weekday: 'long', day: 'numeric' }) + ' · ' + hora(prox.inicio);
@@ -592,7 +618,7 @@ async function cargarAgenda(){
   const dias = diasVista(), g0 = lunes(A.mes + '-01'), g1 = sumarDias(g0, 42);
   const desde = [dias[0], g0].sort()[0], hasta = [sumarDias(dias[dias.length - 1], 1), g1].sort()[1];
   const [c, d] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', desde + 'T00:00:00-05:00').lt('inicio', hasta + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('disponibilidad').select('dia,hora_inicio,hora_fin')]);
   if (c.error || d.error) { const box = $('ag-cen'); if (box) box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || d.error))}</div>`; return; }
@@ -710,7 +736,8 @@ function detalleCita(id){
     📅 <b>${esc(fecha(c.inicio, { weekday: 'long', day: 'numeric', month: 'long' }))}</b><br>
     🕘 ${esc(hora(c.inicio))} – ${esc(hora(c.fin))} (${dur} min)<br>
     💼 ${esc((c.servicios || {}).nombre || 'Cita')}<br>
-    💵 ${c.valor ? peso(c.valor) : 'Sin valor'} · ${c.pagado ? '✅ Pagada' : 'Pendiente de pago'}<br>
+    💵 ${c.valor ? peso(c.valor) : 'Sin valor'} · ${c.pagado ? '✅ Pagada' + (METODOS[c.metodo_pago] ? ' (' + METODOS[c.metodo_pago].replace(/^\S+\s/, '') + ')' : '') : 'Pendiente de pago'}<br>
+    ${c.serie ? '🔁 Cita recurrente<br>' : ''}
     ${pa.telefono ? `📱 ${esc(pa.telefono)}<br>` : ''}
     ${c.origen === 'online' ? '🌐 Reservada en línea por el paciente' : '✍️ Agendada por ti'}
   </div>
@@ -719,14 +746,16 @@ function detalleCita(id){
     ${pa.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(c))}">💬 Recordar</a>` : ''}
     ${/^https:\/\//.test(c.enlace_virtual || '') ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(c.enlace_virtual)}">🎥 Entrar</a>` : ''}
     <button class="btn sm ghost" onclick="cerrarModal();abrirFicha('${c.paciente_id}')">🗂️ Ver ficha</button>
-    <button class="btn sm ${c.pagado ? '' : 'ghost'}" onclick="pagoCita('${c.id}',${!c.pagado})">${c.pagado ? '✓ Pagada' : '💵 Marcar pagada'}</button>
+    <button class="btn sm ${c.pagado ? '' : 'ghost'}" onclick="${c.pagado ? `pagoCita('${c.id}',false)` : `elegirPago('${c.id}')`}">${c.pagado ? '✓ Pagada' : '💵 Marcar pagada'}</button>
+    ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="pedirResena('${c.id}')">⭐ Pedir reseña</button>` : ''}
   </div>
-  ${activa ? `<div class="acciones"><button class="btn sm ghost" onclick="estadoCita('${c.id}','asistio')">Asistió</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','no_asistio')">No asistió</button><button class="btn sm red" onclick="estadoCita('${c.id}','cancelada')">Cancelar cita</button></div>` : ''}
+  ${activa ? `<div class="acciones"><button class="btn sm ghost" onclick="estadoCita('${c.id}','asistio')">Asistió</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','no_asistio')">No asistió</button><button class="btn sm red" onclick="estadoCita('${c.id}','cancelada')">Cancelar cita</button></div>
+    ${c.serie ? `<button class="btn sm red" style="margin-top:6px" onclick="cancelarSerie('${c.serie}','${c.inicio}')">Cancelar esta y las siguientes de la serie</button>` : ''}` : ''}
   <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
 }
 function enlaceRecordatorio(c){
   const pa = c.pacientes || {}, p = S.prof;
-  const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}¿Me confirmas tu asistencia? ${p.nequi ? 'Puedes pagar por Nequi al ' + p.nequi + '. ' : ''}— ${p.nombre}`;
+  const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}¿Me confirmas tu asistencia? ${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
   return 'https://wa.me/' + waNum(pa.telefono) + '?text=' + encodeURIComponent(t);
 }
 async function estadoCita(id, estado){
@@ -734,12 +763,12 @@ async function estadoCita(id, estado){
   cerrarModal();
   const { error } = await sb.from('citas').update({ estado }).eq('id', id);
   if (error) { toast(mensajeError(error), true); return; }
-  toast('Cita actualizada'); vistaAgenda();
+  toast('Cita actualizada'); if (estado === 'cancelada') avisarEspera(); refrescarVista();
 }
-async function pagoCita(id, pagado){
-  const { error } = await sb.from('citas').update({ pagado }).eq('id', id);
+async function pagoCita(id, pagado, metodo){
+  const { error } = await sb.from('citas').update({ pagado, metodo_pago: pagado ? (metodo || '') : '' }).eq('id', id);
   if (error) { toast(mensajeError(error), true); return; }
-  cerrarModal(); toast(pagado ? 'Marcada como pagada 💵' : 'Pago desmarcado'); vistaAgenda();
+  cerrarModal(); toast(pagado ? 'Marcada como pagada 💵' : 'Pago desmarcado'); refrescarVista();
 }
 function copiar(t){ (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Copiado ✅')).catch(() => prompt('Copia el enlace:', t)); }
 
@@ -850,7 +879,11 @@ function vistaPerfil(){
 
   <div class="card"><h3>Atención y pagos</h3>
   <label>Dirección del consultorio (si atiendes presencial)</label><input id="p-dir" maxlength="150" value="${esc(p.direccion)}">
-  <label>Número Nequi para pagos (opcional)</label><input id="p-nequi" maxlength="15" inputmode="tel" value="${esc(p.nequi)}">
+  <label>Número Nequi o Daviplata (opcional)</label><input id="p-nequi" maxlength="15" inputmode="tel" value="${esc(p.nequi)}">
+  <label>Otros datos de pago (opcional)</label><textarea id="p-dpago" maxlength="300" style="min-height:60px" placeholder="Ej: Bancolombia ahorros 000-000000-00 a nombre de Ana Gómez · Llave Bre-B: @anagomez">${esc(p.datos_pago || '')}</textarea>
+  <label>Enlace de pago en línea (opcional)</label><input id="p-epago" maxlength="300" value="${esc(p.enlace_pago || '')}" placeholder="https://… (Bold, Wompi, Mercado Pago)">
+  <p class="mini">Crea un link de cobro gratis en Bold, Wompi o Mercado Pago y pégalo aquí: tus pacientes pagan con tarjeta o PSE y el dinero llega directo a tu cuenta.</p>
+  <label class="check"><input type="checkbox" id="p-dir-on" ${p.en_directorio ? 'checked' : ''}><span><b>Aparecer en el directorio de Consulta LV</b> para que nuevos pacientes me encuentren por tema y ciudad. <a href="${esc(urlPublica('?dir=1'))}" target="_blank" rel="noopener">Ver directorio</a></span></label>
   <label>Tu enlace de reservas</label><input id="p-slug" maxlength="40" value="${esc(p.slug || '')}" placeholder="ej: ana-gomez-psicologa" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
   <p class="mini">Quedará así: ${esc(location.origin + location.pathname)}?p=<b id="p-prev">${esc(p.slug || 'tu-nombre')}</b></p>
   <button class="btn full" id="p-btn" onclick="guardarPerfil()">Guardar perfil</button>
@@ -867,14 +900,16 @@ async function guardarPerfil(){
     idiomas: $('p-idiomas').value.trim(), poblacion: $('p-pob').value.trim(), especialidades: $('p-esp').value.trim(),
     formacion: $('p-form').value.trim(),
     direccion: $('p-dir').value.trim(), nequi: soloDigitos($('p-nequi').value),
+    datos_pago: $('p-dpago').value.trim(), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked,
     slug: $('p-slug').value.trim().replace(/^-+|-+$/g, '') };
   if (d.nombre.length < 3) { toast('Escribe tu nombre completo', true); return; }
   if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
+  if (d.enlace_pago && !/^https:\/\/[^\s"'<>]+$/i.test(d.enlace_pago)) { toast('El enlace de pago debe empezar por https://', true); return; }
   const b = $('p-btn'); b.disabled = true;
   const { data, error } = await sb.from('profesionales').update(d).eq('id', S.prof.id).select().single();
   b.disabled = false;
   if (error) { toast(mensajeError(error), true); return; }
-  S.prof = data; toast('Perfil guardado ✅'); pintarPanel();
+  S.prof = data; toast('Perfil guardado ✅'); S.vista = 'perfil'; pintarPanel();
 }
 function recortarFoto(file){
   return new Promise((ok, mal) => {
@@ -1134,9 +1169,9 @@ function pintarFicha(){
       ${p.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.telefono)}">💬</a>` : ''}
       <button class="btn sm ghost" onclick="exportarHistoria()">📄 PDF</button>
     </div></div>
-  <div class="tabs">${[['notas','Notas (' + P.notas.length + ')'],['escalas','Escalas'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
+  <div class="tabs">${[['notas','Notas (' + P.notas.length + ')'],['escalas','Escalas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
   <div id="ficha-c"></div>`;
-  ({ notas: tabNotas, escalas: tabEscalas, citas: tabCitas, datos: tabDatos })[P.tab]();
+  ({ notas: tabNotas, escalas: tabEscalas, archivos: tabArchivos, citas: tabCitas, datos: tabDatos })[P.tab]();
 }
 const RIESGO = { ninguno: ['Sin riesgo identificado', 'b-ok'], bajo: ['Riesgo bajo', 'b-conf'], medio: ['Riesgo medio', 'b-pend'], alto: ['Riesgo alto', 'b-bad'] };
 const TIPOS_NOTA = { primera: 'Primera consulta', seguimiento: 'Seguimiento', cierre: 'Cierre', otra: 'Otra' };
@@ -1147,19 +1182,35 @@ function tabNotas(){
   c.innerHTML = P.notas.map(n => {
     if (!n.d) return `<div class="card"><div class="aviso err">No se pudo descifrar esta nota.</div></div>`;
     const r = RIESGO[n.d.riesgo] || RIESGO.ninguno;
-    return `<div class="card nota"><div class="row"><div class="grow"><b>${esc(fecha(n.fecha + 'T12:00:00Z',{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</b><div class="sub">${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
-    ${CAMPOS_NOTA.map(f => n.d[f[0]] ? `<h4>${f[1]}</h4><p>${esc(n.d[f[0]])}</p>` : '').join('')}
+    return `<div class="card nota"><div class="row"><div class="grow"><b>${esc(fecha(n.fecha + 'T12:00:00Z',{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</b><div class="sub">${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')}${n.d.plantilla ? ' · 📋 ' + esc(n.d.plantilla) : ''}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
+    ${camposDeNota(n.d).map(f => `<h4>${esc(f[0])}</h4><p>${esc(f[1])}</p>`).join('')}
     ${n.d.acciones_riesgo ? `<h4>Acciones frente al riesgo</h4><p>${esc(n.d.acciones_riesgo)}</p>` : ''}
     <div class="acciones"><button class="btn sm ghost" onclick="formNota('${n.id}')">Editar</button></div></div>`;
   }).join('');
 }
-function formNota(id){
+function camposDeNota(d){ return d.campos ? d.campos.filter(f => f[1]) : CAMPOS_NOTA.filter(f => d[f[0]]).map(f => [f[1], d[f[0]]]); }
+const NF = { campos: null, plantilla: '' };
+function htmlCamposNota(d){
+  if (NF.campos) return NF.campos.map((t, i) => `<label>${esc(t)}</label><textarea id="nt-c${i}" maxlength="6000">${esc(((d.campos || []).find(f => f[0] === t) || [])[1])}</textarea>`).join('');
+  return CAMPOS_NOTA.map(f => `<label>${f[1]}</label><textarea id="nt-${f[0]}" maxlength="6000">${esc(d[f[0]])}</textarea>`).join('');
+}
+function elegirPlantilla(id){
+  const hay = [...document.querySelectorAll('#nt-campos textarea')].some(t => t.value.trim());
+  if (hay && !confirm('Cambiar de formato borra lo que llevas escrito en esta nota. ¿Continuar?')) { $('nt-pl').value = NF.id || ''; return; }
+  const pl = (P.plantillas || []).find(x => x.id === id);
+  NF.id = id; NF.campos = pl ? pl.campos : null; NF.plantilla = pl ? pl.nombre : '';
+  $('nt-campos').innerHTML = htmlCamposNota({});
+}
+async function formNota(id){
   const n = P.notas.find(x => x.id === id), d = (n && n.d) || { tipo: P.notas.length ? 'seguimiento' : 'primera', riesgo: 'ninguno' };
+  const pls = n ? [] : await cargarPlantillas();
+  NF.id = ''; NF.campos = d.campos ? d.campos.map(f => f[0]) : null; NF.plantilla = d.plantilla || '';
   abrirModal(`<h3>${n ? 'Editar' : 'Nueva'} nota · ${esc(P.actual.nombres)}</h3>
   <div class="aviso info" style="font-size:13px">🎙️ Puedes <b>dictar</b>: toca el micrófono de tu teclado dentro de cada campo. 🔒 La nota se cifra antes de salir de tu celular.</div>
   <div class="fila"><div><label>Fecha</label><input id="nt-fecha" type="date" value="${esc((n && n.fecha) || hoyYMD())}"></div>
   <div><label>Tipo</label><select id="nt-tipo">${Object.entries(TIPOS_NOTA).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div></div>
-  ${CAMPOS_NOTA.map(f => `<label>${f[1]}</label><textarea id="nt-${f[0]}" maxlength="6000">${esc(d[f[0]])}</textarea>`).join('')}
+  ${pls.length ? `<label>Formato</label><select id="nt-pl" onchange="elegirPlantilla(this.value)"><option value="">Estándar</option>${pls.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}</select>` : ''}
+  <div id="nt-campos">${htmlCamposNota(d)}</div>
   <label>Valoración de riesgo</label><select id="nt-riesgo" onchange="$('nt-acc-box').style.display=(this.value==='medio'||this.value==='alto')?'block':'none'">${Object.entries(RIESGO).map(([k,v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
   <div id="nt-acc-box" style="display:${d.riesgo==='medio'||d.riesgo==='alto'?'block':'none'}">
     <div class="aviso err" style="margin-top:10px;font-size:13px"><b>Protocolo sugerido:</b> indaga ideación, plan y medios · elabora un plan de seguridad · activa la red de apoyo (contacto de emergencia) · si el riesgo es inminente, remite a urgencias o a la Línea 106 / 123 · documenta las acciones.</div>
@@ -1170,8 +1221,9 @@ function formNota(id){
 }
 async function guardarNota(id){
   const d = { tipo: $('nt-tipo').value, riesgo: $('nt-riesgo').value, acciones_riesgo: $('nt-acc').value.trim() };
-  CAMPOS_NOTA.forEach(f => d[f[0]] = $('nt-' + f[0]).value.trim());
-  if (!CAMPOS_NOTA.some(f => d[f[0]])) { toast('Escribe al menos un campo', true); return; }
+  if (NF.campos) { d.plantilla = NF.plantilla; d.campos = NF.campos.map((t, i) => [t, $('nt-c' + i).value.trim()]); }
+  else CAMPOS_NOTA.forEach(f => d[f[0]] = $('nt-' + f[0]).value.trim());
+  if (!camposDeNota(d).length) { toast('Escribe al menos un campo', true); return; }
   if ((d.riesgo === 'alto' || d.riesgo === 'medio') && !d.acciones_riesgo) { toast('Registra las acciones realizadas frente al riesgo', true); return; }
   $('nt-btn').disabled = true;
   const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('nt-fecha').value || hoyYMD() }, await cifrar(d));
@@ -1266,6 +1318,8 @@ async function formCita(o){
     <p class="mini">¿No está? <a href="#" onclick="cerrarModal();irA('pacientes');setTimeout(()=>formPaciente(),400);return false">Registrar paciente nuevo</a></p>`}
   <label>Servicio</label><select id="ct-serv">${servs.map(s => `<option value="${s.id}" data-d="${s.duracion_min}" data-p="${s.precio}">${esc(s.nombre)} · ${s.duracion_min} min</option>`).join('')}</select>
   <div class="fila"><div><label>Fecha</label><input id="ct-fecha" type="date" value="${esc(o.fecha || hoyYMD())}"></div><div><label>Hora</label><input id="ct-hora" type="time" value="${esc(o.hora || '09:00')}" step="900"></div></div>
+  <div class="fila"><div><label>Repetir</label><select id="ct-rep" onchange="$('ct-n-box').style.visibility=this.value==='0'?'hidden':'visible'"><option value="0">No se repite</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="28">Cada 4 semanas</option></select></div>
+  <div id="ct-n-box" style="visibility:hidden"><label>N.º de sesiones</label><input id="ct-n" type="number" min="2" max="24" value="8"></div></div>
   <label>Enlace de videollamada (opcional)</label><input id="ct-link" maxlength="300" placeholder="https://meet.google.com/...">
   <button class="btn sm ghost" style="margin-top:8px" onclick="$('ct-link').value='https://meet.jit.si/ConsultaLV-'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('')">🎥 Crear sala privada de videollamada</button>
   <button class="btn full" id="ct-btn" onclick="guardarCita()">Agendar (confirmada)</button>
@@ -1285,14 +1339,23 @@ async function guardarCita(){
   if (!pac) { toast('Elige el paciente', true); return; }
   if (!f || !h) { toast('Elige fecha y hora', true); return; }
   if (link && !/^https:\/\/[^\s"'<>]+$/i.test(link)) { toast('El enlace debe empezar por https://', true); return; }
-  const ini = new Date(`${f}T${h}:00-05:00`), fin = new Date(ini.getTime() + (+sv.dataset.d) * 60000);
-  $('ct-btn').disabled = true;
-  const { error } = await sb.from('citas').insert({ paciente_id: pac, servicio_id: sv.value, inicio: ini.toISOString(), fin: fin.toISOString(),
-    estado: 'confirmada', origen: 'manual', valor: +sv.dataset.p || 0, enlace_virtual: link });
-  if (error) { $('ct-btn').disabled = false; toast(mensajeError(error), true); return; }
-  cerrarModal(); toast('Cita agendada ✅');
+  const rep = +($('ct-rep') ? $('ct-rep').value : 0), n = rep ? Math.max(2, Math.min(24, parseInt($('ct-n').value, 10) || 2)) : 1, serie = rep ? uuid() : null;
+  $('ct-btn').disabled = true; $('ct-btn').textContent = 'Agendando…';
+  const ok = [], cruces = [];
+  for (let i = 0; i < n; i++) {
+    const dia = sumarDias(f, rep * i), ini = new Date(`${dia}T${h}:00-05:00`), fin = new Date(ini.getTime() + (+sv.dataset.d) * 60000);
+    const { error } = await sb.from('citas').insert({ paciente_id: pac, servicio_id: sv.value, inicio: ini.toISOString(), fin: fin.toISOString(),
+      estado: 'confirmada', origen: 'manual', valor: +sv.dataset.p || 0, enlace_virtual: link, serie });
+    if (!error) ok.push(dia);
+    else if (/sin_cruce|23P01|exclusion/i.test(error.message || '')) cruces.push(dia);
+    else { $('ct-btn').disabled = false; $('ct-btn').textContent = 'Agendar (confirmada)'; toast(mensajeError(error), true); if (!ok.length) return; break; }
+  }
+  if (!ok.length) { $('ct-btn').disabled = false; $('ct-btn').textContent = 'Agendar (confirmada)'; toast('Ya tienes una cita en ese horario', true); return; }
+  cerrarModal();
+  if (cruces.length) setTimeout(() => abrirModal(`<h3>🔁 ${ok.length} cita${ok.length > 1 ? 's' : ''} agendada${ok.length > 1 ? 's' : ''}</h3><div class="aviso warn">No se agendaron estas fechas porque ya tenías otra cita a esa hora:<br><b>${cruces.map(d => esc(fecha(d + 'T17:00:00Z', { weekday: 'short', day: 'numeric', month: 'short' }))).join(' · ')}</b></div><button class="btn full" onclick="cerrarModal()">Entendido</button>`), 300);
+  else toast(n > 1 ? `${ok.length} citas agendadas 🔁` : 'Cita agendada ✅');
   if (o.volver === 'ficha') { P.tab = 'citas'; abrirFicha(pac, true); }
-  else { A.fecha = f; A.mes = f.slice(0, 7); if (S.vista === 'agenda') cargarAgenda(); }
+  else { A.fecha = f; A.mes = f.slice(0, 7); if (S.vista === 'agenda') cargarAgenda(); else if (S.vista === 'inicio') vistaInicio(); }
 }
 
 /* --- DATOS --- */
@@ -1315,7 +1378,7 @@ function exportarHistoria(){
   sb.rpc('registrar_acceso', { p_tabla: 'exportacion', p_id: P.actual.id });
   const p = P.actual, pr = S.prof;
   const notas = [...P.notas].reverse().map(n => !n.d ? '' : `<div class="n"><h3>${esc(n.fecha)} · ${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')} · ${esc((RIESGO[n.d.riesgo] || RIESGO.ninguno)[0])}</h3>
-    ${CAMPOS_NOTA.map(f => n.d[f[0]] ? `<b>${f[1]}:</b><p>${esc(n.d[f[0]])}</p>` : '').join('')}${n.d.acciones_riesgo ? `<b>Acciones frente al riesgo:</b><p>${esc(n.d.acciones_riesgo)}</p>` : ''}</div>`).join('');
+    ${camposDeNota(n.d).map(f => `<b>${esc(f[0])}:</b><p>${esc(f[1])}</p>`).join('')}${n.d.acciones_riesgo ? `<b>Acciones frente al riesgo:</b><p>${esc(n.d.acciones_riesgo)}</p>` : ''}</div>`).join('');
   const esc_ = P.escalas.filter(x => x.d).map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${x.d.total}</td><td>${esc(x.d.nivel)}</td></tr>`).join('');
   w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Historia clínica - ${esc(p.nombres)}</title>
   <style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:28px}h1{font-size:18px;margin:0}h2{font-size:14px;border-bottom:2px solid #0e7490;padding-bottom:4px;margin-top:22px}h3{font-size:12px;margin:0 0 6px;color:#0e7490}
@@ -1334,8 +1397,455 @@ function exportarHistoria(){
   w.document.close();
 }
 
+/* =========================================================
+   v3 · MÁS, FINANZAS, ESPERA, RESEÑAS, PLANTILLAS, ADJUNTOS, HABEAS
+   ========================================================= */
+const GRUPO = { servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
+function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = azar(16); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128; const h = [...b].map(x => x.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
+function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
+function urlPublica(q){ return location.origin + location.pathname + q; }
+function estrellas(n){ n = Math.round(n || 0); return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+/* --- MÁS --- */
+function vistaMas(){
+  const items = [['servicios','💼','Servicios','Lo que ofreces, precio y duración'],
+    ['horarios','🕘','Horarios','Cuándo pueden reservarte'],
+    ['perfil','👤','Perfil, pagos y directorio','Lo que ven tus pacientes'],
+    ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
+    ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
+    ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
+    ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)']];
+  $('vista').innerHTML = `<h2>Más opciones</h2><div class="menu-mas">${items.map(x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`).join('')}</div>
+  <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte buscando por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
+  <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>`;
+  Promise.all([sb.from('lista_espera').select('id', { count: 'exact', head: true }).eq('estado', 'esperando'),
+    sb.from('solicitudes_habeas').select('id', { count: 'exact', head: true }).neq('estado', 'respondida')]).then(([e, h]) => {
+    const pon = (k, n, rojo) => { const s = $('mb-' + k); if (s && n) s.innerHTML = `<span class="badge ${rojo ? 'b-bad' : 'b-pend'}">${n}</span>`; };
+    pon('espera', e.count ?? (e.data || []).length); pon('habeas', h.count ?? (h.data || []).length, true);
+  });
+}
+
+/* --- FINANZAS --- */
+const FIN = { mes: hoyYMD().slice(0, 7), citas: [], gastos: [] };
+const CAT_GASTO = { arriendo: '🏢 Arriendo', servicios: '💡 Servicios públicos', software: '💻 Software y apps', publicidad: '📣 Publicidad', formacion: '🎓 Formación', transporte: '🚌 Transporte', impuestos: '🧾 Impuestos', materiales: '📦 Materiales', otro: '• Otro' };
+const METODOS = { efectivo: '💵 Efectivo', nequi: '📱 Nequi / Daviplata', transferencia: '🏦 Transferencia', enlace: '💳 Tarjeta o enlace de pago' };
+function mesSum(ym, n){ const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); }
+function nombreMes(ym, corto){ const [y, m] = ym.split('-').map(Number), t = MESES[m - 1]; return corto ? t.slice(0, 3) : t.charAt(0).toUpperCase() + t.slice(1) + ' ' + y; }
+const suma = (a, k) => a.reduce((s, x) => s + (x[k || 'valor'] || 0), 0);
+async function vistaFinanzas(){
+  const v = $('vista'), m = FIN.mes, ini = mesSum(m, -5);
+  v.innerHTML = `<div class="row" style="margin-top:8px"><button class="btn sm ghost" onclick="FIN.mes=mesSum(FIN.mes,-1);vistaFinanzas()">‹</button>
+    <h2 class="grow" style="text-align:center;margin:0">💰 ${esc(nombreMes(m))}</h2><button class="btn sm ghost" onclick="FIN.mes=mesSum(FIN.mes,1);vistaFinanzas()">›</button></div>
+    <div id="fin-c"><div class="carga">Calculando…</div></div>`;
+  const [c, g] = await Promise.all([
+    sb.from('citas').select('id,inicio,estado,valor,pagado,metodo_pago,paciente_id,pacientes(nombres,telefono),servicios(nombre)')
+      .gte('inicio', ini + '-01T00:00:00-05:00').lt('inicio', mesSum(m, 1) + '-01T00:00:00-05:00').order('inicio', { ascending: true }),
+    sb.from('gastos').select('*').gte('fecha', ini + '-01').lt('fecha', mesSum(m, 1) + '-01').order('fecha', { ascending: false })]);
+  const box = $('fin-c'); if (!box) return;
+  if (c.error || g.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || g.error))}</div>`; return; }
+  FIN.citas = c.data || []; FIN.gastos = g.data || [];
+  const delMes = (x, ym) => bog(x.inicio).ymd.slice(0, 7) === ym;
+  const cm = FIN.citas.filter(x => delMes(x, m)), gm = FIN.gastos.filter(x => x.fecha.slice(0, 7) === m);
+  const cobrado = suma(cm.filter(x => x.pagado)), gastos = suma(gm);
+  const porCobrar = cm.filter(x => !x.pagado && x.estado === 'asistio' && x.valor);
+  const proyectado = suma(cm.filter(x => !x.pagado && ['pendiente', 'confirmada'].includes(x.estado)));
+  const asis = cm.filter(x => x.estado === 'asistio').length, noAsis = cm.filter(x => x.estado === 'no_asistio').length;
+  const tasa = asis + noAsis ? Math.round(noAsis / (asis + noAsis) * 100) : 0;
+  const meses = [0, 1, 2, 3, 4, 5].map(i => mesSum(ini, i)).map(ym => ({ ym, ing: suma(FIN.citas.filter(x => x.pagado && delMes(x, ym))), gas: suma(FIN.gastos.filter(x => x.fecha.slice(0, 7) === ym)) }));
+  const tope = Math.max(1, ...meses.map(x => Math.max(x.ing, x.gas)));
+  const porServ = {}; cm.filter(x => x.pagado).forEach(x => { const k = (x.servicios || {}).nombre || 'Otro'; porServ[k] = (porServ[k] || 0) + (x.valor || 0); });
+  const porMet = {}; cm.filter(x => x.pagado).forEach(x => { const k = METODOS[x.metodo_pago] || 'Sin especificar'; porMet[k] = (porMet[k] || 0) + (x.valor || 0); });
+  const util = cobrado - gastos;
+  let h = `<div class="kpis">
+    <div class="kpi"><b>${esc(peso(cobrado))}</b><span>Cobrado</span></div>
+    <div class="kpi"><b style="color:var(--bad)">${esc(peso(gastos))}</b><span>Gastos</span></div>
+    <div class="kpi"><b style="color:${util >= 0 ? '#059669' : 'var(--bad)'}">${util < 0 ? '−' : ''}${esc(peso(Math.abs(util)))}</b><span>Utilidad</span></div>
+    <div class="kpi"><b style="color:#d97706">${esc(peso(suma(porCobrar)))}</b><span>Por cobrar</span></div></div>
+  <div class="acciones" style="margin-bottom:12px"><button class="btn sm" onclick="formGasto()">+ Registrar gasto</button><button class="btn sm ghost" onclick="exportarFinanzas()">⬇️ Exportar a Excel (CSV)</button></div>
+  <div class="card"><h3>Últimos 6 meses</h3><div class="barras">${meses.map(x => `<div class="bcol${x.ym === m ? ' on' : ''}" onclick="FIN.mes='${x.ym}';vistaFinanzas()">
+    <div class="bpar"><i class="bi" style="height:${x.ing / tope * 100}%" title="${esc(peso(x.ing))}"></i><i class="bg" style="height:${x.gas / tope * 100}%" title="${esc(peso(x.gas))}"></i></div><span>${esc(nombreMes(x.ym, true))}</span></div>`).join('')}</div>
+    <div class="leyenda" style="margin-top:8px"><span><i style="background:var(--pri)"></i>Ingresos</span><span><i style="background:#f87171"></i>Gastos</span></div></div>
+  <div class="card"><h3>Indicadores del mes</h3><div style="font-size:14px;line-height:1.9">
+    ✅ Sesiones atendidas: <b>${asis}</b><br>❌ Inasistencias: <b>${noAsis}</b> (${tasa}%)${tasa >= 20 ? ' · <span style="color:var(--bad)">alta: envía recordatorios el día anterior</span>' : ''}<br>
+    📅 Por cobrar de citas agendadas: <b>${esc(peso(proyectado))}</b><br>💵 Valor promedio por sesión: <b>${esc(peso(asis ? Math.round(suma(cm.filter(x => x.estado === 'asistio')) / asis) : 0))}</b></div>
+    ${Object.keys(porServ).length ? `<h4 style="margin:12px 0 4px">Ingresos por servicio</h4>${Object.entries(porServ).sort((a, b) => b[1] - a[1]).map(([k, val]) => `<div class="franja"><span>${esc(k)}</span><b>${esc(peso(val))}</b></div>`).join('')}` : ''}
+    ${Object.keys(porMet).length ? `<h4 style="margin:12px 0 4px">Por medio de pago</h4>${Object.entries(porMet).map(([k, val]) => `<div class="franja"><span>${esc(k)}</span><b>${esc(peso(val))}</b></div>`).join('')}` : ''}</div>`;
+  h += `<h2>Por cobrar (${porCobrar.length})</h2>` + (porCobrar.length ? porCobrar.map(x => { const pa = x.pacientes || {};
+    const t = `Hola ${(pa.nombres || '').split(' ')[0]}, te comparto el valor de la sesión del ${fecha(x.inicio, { day: 'numeric', month: 'long' })}: ${peso(x.valor)}. ${textoPago()}¡Gracias! — ${S.prof.nombre}`;
+    return `<div class="card"><div class="row"><div class="grow"><b>${esc(pa.nombres || 'Paciente')}</b><div class="sub">${esc(fecha(x.inicio, { day: 'numeric', month: 'short' }))} · ${esc((x.servicios || {}).nombre || 'Sesión')}</div></div><b>${esc(peso(x.valor))}</b></div>
+      <div class="acciones">${pa.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(t)}">💬 Cobrar por WhatsApp</a>` : ''}<button class="btn sm" onclick="elegirPago('${x.id}')">✓ Marcar pagada</button></div></div>`; }).join('')
+    : `<div class="empty">🎉 No tienes sesiones atendidas pendientes de pago este mes.</div>`);
+  h += `<h2>Gastos del mes (${gm.length})</h2>` + (gm.length ? `<div class="card">${gm.map(x => `<div class="franja"><span class="grow">${esc(CAT_GASTO[x.categoria] || x.categoria)} · ${esc(x.concepto)}<br><small class="sub">${esc(x.fecha)}</small></span><b style="margin:0 10px">${esc(peso(x.valor))}</b><button class="btn sm red" onclick="borrarGasto('${x.id}')">✕</button></div>`).join('')}</div>`
+    : `<div class="empty">Sin gastos registrados. Registra arriendo, publicidad o software para conocer tu utilidad real.</div>`);
+  box.innerHTML = h;
+}
+function textoPago(){
+  const p = S.prof, t = [];
+  if (p.nequi) t.push('Nequi: ' + p.nequi);
+  if (p.datos_pago) t.push(p.datos_pago);
+  if (/^https:\/\//.test(p.enlace_pago || '')) t.push('Pago en línea: ' + p.enlace_pago);
+  return t.length ? 'Puedes pagar por ' + t.join(' · ') + '. ' : '';
+}
+function formGasto(){
+  abrirModal(`<h3>Registrar gasto</h3>
+  <label>Concepto</label><input id="g-con" maxlength="120" placeholder="Ej: Arriendo consultorio">
+  <div class="fila"><div><label>Valor ($)</label><input id="g-val" type="number" min="1" step="1000" inputmode="numeric"></div><div><label>Fecha</label><input id="g-fec" type="date" value="${hoyYMD()}"></div></div>
+  <label>Categoría</label><select id="g-cat">${Object.entries(CAT_GASTO).map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select>
+  <button class="btn full" id="g-btn" onclick="guardarGasto()">Guardar</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function guardarGasto(){
+  const d = { concepto: $('g-con').value.trim(), valor: parseInt($('g-val').value, 10), fecha: $('g-fec').value || hoyYMD(), categoria: $('g-cat').value };
+  if (d.concepto.length < 2) { toast('Escribe el concepto', true); return; }
+  if (!(d.valor > 0)) { toast('Escribe el valor', true); return; }
+  $('g-btn').disabled = true;
+  const { error } = await sb.from('gastos').insert(d);
+  if (error) { $('g-btn').disabled = false; toast(mensajeError(error), true); return; }
+  cerrarModal(); toast('Gasto registrado'); FIN.mes = d.fecha.slice(0, 7); vistaFinanzas();
+}
+async function borrarGasto(id){
+  if (!confirm('¿Eliminar este gasto?')) return;
+  const { error } = await sb.from('gastos').delete().eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  vistaFinanzas();
+}
+function celdaCSV(v){ let s = String(v ?? ''); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; }
+function exportarFinanzas(){
+  const m = FIN.mes, filas = [['Tipo', 'Fecha', 'Detalle', 'Categoría / medio', 'Estado', 'Valor']];
+  FIN.citas.filter(x => bog(x.inicio).ymd.slice(0, 7) === m && x.estado !== 'cancelada' && x.valor).forEach(x => filas.push(['Ingreso', bog(x.inicio).ymd, ((x.servicios || {}).nombre || 'Sesión') + ' - ' + ((x.pacientes || {}).nombres || ''), METODOS[x.metodo_pago] ? METODOS[x.metodo_pago].replace(/^\S+\s/, '') : '', x.pagado ? 'Pagado' : 'Pendiente', x.valor]));
+  FIN.gastos.filter(x => x.fecha.slice(0, 7) === m).forEach(x => filas.push(['Gasto', x.fecha, x.concepto, (CAT_GASTO[x.categoria] || '').replace(/^\S+\s/, ''), 'Pagado', -x.valor]));
+  const csv = '\ufeff' + filas.map(f => f.map(celdaCSV).join(';')).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `finanzas-${m}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  toast('Archivo descargado ✅');
+}
+function elegirPago(id){
+  abrirModal(`<h3>¿Cómo te pagó?</h3><div class="menu-mas">${Object.entries(METODOS).map(([k, t]) => `<button onclick="pagoCita('${id}',true,'${k}')"><span class="grow"><b>${t}</b></span><span class="sub">›</span></button>`).join('')}</div>
+  <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+
+/* --- CITAS RECURRENTES --- */
+async function cancelarSerie(serie, desde){
+  if (!confirm('¿Cancelar esta cita y todas las siguientes de la serie?')) return;
+  cerrarModal();
+  const { error } = await sb.from('citas').update({ estado: 'cancelada' }).eq('serie', serie).gte('inicio', desde).in('estado', ['pendiente', 'confirmada']);
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Serie cancelada'); avisarEspera(); refrescarVista();
+}
+async function avisarEspera(){
+  const r = await sb.from('lista_espera').select('id', { count: 'exact', head: true }).eq('estado', 'esperando');
+  const n = r.count ?? (r.data || []).length;
+  if (n) setTimeout(() => toast(`Se liberó un espacio · tienes ${n} persona${n > 1 ? 's' : ''} en lista de espera ⏳`), 1600);
+}
+
+/* --- LISTA DE ESPERA (profesional) --- */
+async function vistaEspera(){
+  const v = $('vista');
+  v.innerHTML = `<h2>⏳ Lista de espera <button class="btn sm" onclick="formEsperaPro()">+ Agregar</button></h2>
+  <p class="mini" style="margin:-4px 0 10px">Cuando un paciente no encuentra horario en tu página, puede anotarse aquí. Si se cancela una cita, escríbele.</p><div id="esp-c"><div class="carga">Cargando…</div></div>`;
+  const { data, error } = await sb.from('lista_espera').select('*,servicios(nombre)').in('estado', ['esperando', 'contactado']).order('created_at', { ascending: true });
+  const box = $('esp-c'); if (!box) return;
+  if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
+  if (!(data || []).length) { box.innerHTML = `<div class="empty">Nadie en lista de espera por ahora.</div>`; return; }
+  box.innerHTML = data.map(x => {
+    const t = `Hola ${x.nombres.split(' ')[0]}, te escribe ${S.prof.nombre}. Se liberó un espacio para ${(x.servicios || {}).nombre || 'tu cita'}. ¿Te sirve? ${S.prof.slug ? 'Puedes reservarlo aquí: ' + enlaceReservas() : ''}`;
+    return `<div class="card"><div class="row"><div class="grow"><b>${esc(x.nombres)}</b><div class="sub">📱 ${esc(x.telefono)}${x.email ? ' · ' + esc(x.email) : ''}</div>
+      <div class="sub">${esc((x.servicios || {}).nombre || 'Cualquier servicio')} · desde ${esc(fecha(x.created_at, { day: 'numeric', month: 'short' }))}</div></div>
+      <span class="badge ${x.estado === 'esperando' ? 'b-pend' : 'b-conf'}">${x.estado === 'esperando' ? 'Esperando' : 'Contactado'}</span></div>
+      ${x.preferencia ? `<p style="font-size:14px;margin-top:8px">🗓️ ${esc(x.preferencia)}</p>` : ''}
+      <div class="acciones"><a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNum(x.telefono)}?text=${encodeURIComponent(t)}" onclick="estadoEspera('${x.id}','contactado',true)">💬 Ofrecer espacio</a>
+      <button class="btn sm ghost" onclick="estadoEspera('${x.id}','agendado')">✓ Ya agendó</button><button class="btn sm red" onclick="estadoEspera('${x.id}','descartado')">Quitar</button></div></div>`;
+  }).join('');
+}
+async function estadoEspera(id, estado, silencio){
+  const { error } = await sb.from('lista_espera').update({ estado }).eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  if (silencio) setTimeout(vistaEspera, 800); else { toast('Actualizado'); vistaEspera(); }
+}
+function formEsperaPro(){
+  abrirModal(`<h3>Agregar a lista de espera</h3>
+  <label>Nombre</label><input id="ep-nom" maxlength="120"><div class="fila"><div><label>Celular</label><input id="ep-tel" maxlength="15" inputmode="tel"></div><div><label>Correo (opcional)</label><input id="ep-email" type="email" maxlength="120"></div></div>
+  <label>¿Qué horario le sirve?</label><input id="ep-pref" maxlength="300" placeholder="Ej: martes o jueves en la tarde">
+  <label class="check"><input type="checkbox" id="ep-aut"><span>La persona autorizó el tratamiento de sus datos para contactarla.</span></label>
+  <button class="btn full" onclick="guardarEsperaPro()">Guardar</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function guardarEsperaPro(){
+  const d = { nombres: $('ep-nom').value.trim(), telefono: soloDigitos($('ep-tel').value), email: $('ep-email').value.trim().toLowerCase(), preferencia: $('ep-pref').value.trim(), autorizacion_datos_at: new Date().toISOString() };
+  if (d.nombres.length < 3 || d.telefono.length < 7) { toast('Escribe nombre y celular', true); return; }
+  if (!$('ep-aut').checked) { toast('Confirma la autorización de datos', true); return; }
+  const { error } = await sb.from('lista_espera').insert(d);
+  if (error) { toast(mensajeError(error), true); return; }
+  cerrarModal(); toast('Agregado ✅'); vistaEspera();
+}
+
+/* --- RESEÑAS (profesional) --- */
+async function pedirResena(citaId){
+  const c = A.citas.find(x => x.id === citaId) || {}, pa = c.pacientes || {};
+  const { data, error } = await sb.rpc('invitar_resena', { p_cita: citaId });
+  if (error || !data) { toast(mensajeError(error), true); return; }
+  const link = urlPublica('?r=' + data);
+  const t = `Hola ${(pa.nombres || '').split(' ')[0]}, gracias por confiar en mí. Si quieres, puedes dejar tu opinión sobre la atención aquí (toma 1 minuto y puedes hacerlo de forma anónima): ${link} — ${S.prof.nombre}`;
+  abrirModal(`<h3>⭐ Pedir reseña verificada</h3><p class="mini">Solo quien asistió a esta cita puede usar este enlace, y solo una vez. Así tus reseñas son reales.</p>
+  <div class="link-box">${esc(link)}</div>
+  <div class="acciones">${pa.telefono ? `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(t)}">💬 Enviar por WhatsApp</a>` : ''}<button class="btn sm ghost" onclick="copiar('${esc(link)}')">Copiar enlace</button></div>
+  <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
+}
+async function vistaResenas(){
+  const v = $('vista');
+  v.innerHTML = `<h2>⭐ Reseñas verificadas</h2><div id="res-c"><div class="carga">Cargando…</div></div>`;
+  const { data, error } = await sb.from('resenas').select('id,estrellas,comentario,alias,publicada_at,respuesta,created_at').order('created_at', { ascending: false });
+  const box = $('res-c'); if (!box) return;
+  if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
+  const pub = (data || []).filter(x => x.publicada_at), sin = (data || []).length - pub.length;
+  const prom = pub.length ? (suma(pub, 'estrellas') / pub.length).toFixed(1) : '–';
+  let h = `<div class="card" style="text-align:center"><div style="font-size:40px;font-weight:800;color:var(--pri)">${prom}</div><div style="color:#f59e0b;font-size:22px">${estrellas(+prom || 0)}</div>
+    <div class="sub">${pub.length} reseña${pub.length === 1 ? '' : 's'} verificada${pub.length === 1 ? '' : 's'}${sin ? ` · ${sin} enlace${sin > 1 ? 's' : ''} sin responder` : ''}</div>
+    <p class="mini">Pide reseñas desde la Agenda: toca una cita marcada como <b>Asistió</b> → "⭐ Pedir reseña". Las reseñas no se pueden editar ni borrar; puedes responderlas.</p></div>`;
+  h += pub.length ? pub.map(x => `<div class="card"><div class="row"><b class="grow">${esc(x.alias)}</b><span style="color:#f59e0b">${estrellas(x.estrellas)}</span></div>
+    <div class="sub">${esc(fecha(x.publicada_at, { day: 'numeric', month: 'long', year: 'numeric' }))}</div>${x.comentario ? `<p style="font-size:14px;margin-top:8px;white-space:pre-wrap">${esc(x.comentario)}</p>` : ''}
+    <label>Tu respuesta pública</label><textarea id="rp-${x.id}" maxlength="600" style="min-height:60px">${esc(x.respuesta)}</textarea>
+    <button class="btn sm ghost" style="margin-top:6px" onclick="responderResena('${x.id}')">Guardar respuesta</button></div>`).join('')
+    : `<div class="empty">Aún no tienes reseñas publicadas.</div>`;
+  box.innerHTML = h;
+}
+async function responderResena(id){
+  const { error } = await sb.from('resenas').update({ respuesta: $('rp-' + id).value.trim() }).eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Respuesta publicada ✅');
+}
+
+/* --- PLANTILLAS DE NOTA --- */
+async function cargarPlantillas(forzar){
+  if (P.plantillas && !forzar) return P.plantillas;
+  const { data } = await sb.from('plantillas').select('*').order('nombre');
+  P.plantillas = data || []; return P.plantillas;
+}
+async function vistaPlantillas(){
+  const v = $('vista');
+  v.innerHTML = `<h2>📋 Plantillas de notas <button class="btn sm" onclick="formPlantilla()">+ Nueva</button></h2>
+  <p class="mini" style="margin:-4px 0 10px">Crea tus propios formatos (pareja, infantil, evaluación, neuropsicología…). Al escribir una nota eliges el formato. El contenido siempre se cifra.</p><div id="pl-c"><div class="carga">Cargando…</div></div>`;
+  const pl = await cargarPlantillas(true), box = $('pl-c'); if (!box) return;
+  box.innerHTML = `<div class="card"><b>Estándar</b> <span class="badge b-gris">Predeterminada</span><div class="sub" style="margin-top:4px">${CAMPOS_NOTA.map(c => esc(c[1])).join(' · ')}</div></div>` +
+    pl.map(x => `<div class="card"><b>${esc(x.nombre)}</b><div class="sub" style="margin-top:4px">${(x.campos || []).map(esc).join(' · ')}</div>
+    <div class="acciones"><button class="btn sm ghost" onclick="formPlantilla('${x.id}')">Editar</button><button class="btn sm red" onclick="borrarPlantilla('${x.id}')">Eliminar</button></div></div>`).join('');
+}
+const SUGERIDAS = { 'Terapia de pareja': ['Motivo de consulta de la pareja', 'Dinámica relacional observada', 'Patrones de comunicación', 'Intervención realizada', 'Acuerdos y tareas'], 'Infantil': ['Motivo de consulta (reporte de cuidadores)', 'Observación del juego y conducta', 'Desarrollo y contexto escolar', 'Intervención', 'Orientaciones a padres'], 'Evaluación': ['Motivo de evaluación', 'Instrumentos aplicados', 'Resultados', 'Impresión diagnóstica', 'Recomendaciones'] };
+function formPlantilla(id){
+  const x = (P.plantillas || []).find(p => p.id === id) || { nombre: '', campos: [] };
+  abrirModal(`<h3>${id ? 'Editar' : 'Nueva'} plantilla</h3>
+  ${id ? '' : `<p class="mini">Empieza con una sugerida:</p><div class="chips">${Object.keys(SUGERIDAS).map(k => `<div class="chip" onclick="$('pl-nom').value='${k}';$('pl-campos').value=SUGERIDAS['${k}'].join('\\n')">${k}</div>`).join('')}</div>`}
+  <label>Nombre</label><input id="pl-nom" maxlength="60" value="${esc(x.nombre)}" placeholder="Ej: Terapia de pareja">
+  <label>Campos (uno por línea, máximo 15)</label><textarea id="pl-campos" style="min-height:150px" placeholder="Motivo de consulta&#10;Observaciones&#10;Plan">${esc((x.campos || []).join('\n'))}</textarea>
+  <p class="mini">La valoración de riesgo se agrega siempre al final de cada nota.</p>
+  <button class="btn full" onclick="guardarPlantilla(${id ? `'${id}'` : 'null'})">Guardar</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function guardarPlantilla(id){
+  const nombre = $('pl-nom').value.trim(), campos = $('pl-campos').value.split('\n').map(s => s.trim().slice(0, 80)).filter(Boolean).slice(0, 15);
+  if (nombre.length < 2) { toast('Escribe el nombre', true); return; }
+  if (!campos.length) { toast('Agrega al menos un campo', true); return; }
+  const r = id ? await sb.from('plantillas').update({ nombre, campos }).eq('id', id) : await sb.from('plantillas').insert({ nombre, campos });
+  if (r.error) { toast(mensajeError(r.error), true); return; }
+  cerrarModal(); toast('Plantilla guardada ✅'); vistaPlantillas();
+}
+async function borrarPlantilla(id){
+  if (!confirm('¿Eliminar esta plantilla? Las notas ya escritas con ella no se modifican.')) return;
+  const { error } = await sb.from('plantillas').delete().eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  vistaPlantillas();
+}
+
+/* --- ARCHIVOS ADJUNTOS CIFRADOS --- */
+const MAX_ADJ = 9.5 * 1024 * 1024;
+function tamano(n){ return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; }
+function iconoArchivo(t){ return /^image\//.test(t) ? '🖼️' : /pdf/.test(t) ? '📕' : /word|document/.test(t) ? '📘' : /sheet|excel|csv/.test(t) ? '📗' : /audio/.test(t) ? '🎧' : '📎'; }
+async function tabArchivos(){
+  const c = $('ficha-c');
+  c.innerHTML = `<div class="card"><button class="btn full" onclick="$('adj-file').click()">📎 Adjuntar archivo</button>
+    <input type="file" id="adj-file" style="display:none" onchange="subirAdjunto(this)">
+    <p class="mini">Consentimientos firmados, pruebas, informes, remisiones o fotos (máx. 9 MB). 🔒 Se cifran en tu dispositivo antes de subir: nadie más puede abrirlos.</p></div><div id="adj-l"><div class="carga" style="padding:20px">Cargando…</div></div>`;
+  const { data, error } = await sb.from('adjuntos').select('*').eq('paciente_id', P.actual.id).order('created_at', { ascending: false });
+  const box = $('adj-l'); if (!box) return;
+  if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
+  P.adjuntos = await Promise.all((data || []).map(async a => Object.assign(a, { m: await descifrar(a.meta_cifrada, a.iv_meta) })));
+  box.innerHTML = P.adjuntos.length ? P.adjuntos.map(a => a.m ? `<div class="card tap" style="cursor:pointer" onclick="abrirAdjunto('${a.id}')"><div class="row"><span style="font-size:26px">${iconoArchivo(a.m.tipo)}</span>
+    <div class="grow" style="min-width:0"><b style="word-break:break-all">${esc(a.m.nombre)}</b><div class="sub">${esc(tamano(a.m.tam))} · ${esc(fecha(a.created_at, { day: 'numeric', month: 'short', year: 'numeric' }))}</div></div><span class="sub">Abrir ›</span></div></div>`
+    : `<div class="card"><div class="aviso err">No se pudo descifrar este archivo.</div></div>`).join('') : `<div class="empty">Sin archivos adjuntos.</div>`;
+}
+async function subirAdjunto(inp){
+  const f = inp.files && inp.files[0]; inp.value = '';
+  if (!f) return;
+  if (f.size > MAX_ADJ) { toast('El archivo supera 9 MB', true); return; }
+  if (!C.dk) { toast('Desbloquea tus historias primero', true); return; }
+  toast('Cifrando y subiendo… 🔒');
+  try {
+    const iv = azar(12), ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, C.dk, await f.arrayBuffer());
+    const ruta = `${S.prof.id}/${P.actual.id}/${uuid()}.bin`;
+    const up = await sb.storage.from('adjuntos').upload(ruta, new Blob([ct], { type: 'application/octet-stream' }), { contentType: 'application/octet-stream', upsert: false });
+    if (up.error) throw up.error;
+    const meta = await cifrar({ nombre: f.name.slice(0, 150), tipo: f.type || 'application/octet-stream', tam: f.size });
+    const { error } = await sb.from('adjuntos').insert({ paciente_id: P.actual.id, ruta, iv: b64(iv), meta_cifrada: meta.contenido_cifrado, iv_meta: meta.iv });
+    if (error) throw error;
+    toast('Archivo guardado 🔒'); tabArchivos();
+  } catch (e) { toast(mensajeError(e), true); }
+}
+async function abrirAdjunto(id){
+  const a = (P.adjuntos || []).find(x => x.id === id); if (!a || !a.m) return;
+  toast('Descifrando…');
+  try {
+    const { data, error } = await sb.storage.from('adjuntos').download(a.ruta);
+    if (error) throw error;
+    const plano = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(a.iv) }, C.dk, await data.arrayBuffer());
+    sb.rpc('registrar_acceso', { p_tabla: 'adjuntos', p_id: a.id });
+    const url = URL.createObjectURL(new Blob([plano], { type: a.m.tipo }));
+    abrirModal(`<h3 style="word-break:break-all">${iconoArchivo(a.m.tipo)} ${esc(a.m.nombre)}</h3>
+      ${/^image\/(jpeg|png|webp|gif)$/.test(a.m.tipo) ? `<img src="${url}" alt="" style="width:100%;border-radius:12px;margin:8px 0">` : `<p class="mini">${esc(tamano(a.m.tam))}. Descárgalo para abrirlo.</p>`}
+      <a class="btn full" href="${url}" download="${esc(a.m.nombre)}">⬇️ Descargar</a>
+      <p class="mini">Este archivo contiene información clínica reservada. No lo compartas por medios no seguros.</p>
+      <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
+    setTimeout(() => URL.revokeObjectURL(url), 300000);
+  } catch (e) { toast(/OperationError/.test(String(e && e.name)) ? 'No se pudo descifrar el archivo' : mensajeError(e), true); }
+}
+
+/* --- SOLICITUDES DE DATOS (habeas data) --- */
+const TIPO_HAB = { consulta: ['Consulta de datos', 10], actualizacion: ['Actualización', 15], rectificacion: ['Rectificación', 15], supresion: ['Supresión / revocatoria', 15], copia_historia: ['Copia de historia clínica', 10] };
+function sumarHabiles(iso, n){ const d = new Date(iso); while (n > 0) { d.setUTCDate(d.getUTCDate() + 1); const w = d.getUTCDay(); if (w !== 0 && w !== 6) n--; } return d; }
+async function vistaHabeas(){
+  const v = $('vista');
+  v.innerHTML = `<h2>🛡️ Solicitudes de datos</h2><p class="mini" style="margin:-4px 0 10px">Ley 1581 de 2012: tienes 10 días hábiles para consultas y 15 para reclamos (actualizar, corregir o suprimir). Responde siempre por escrito al correo del titular.</p><div id="hab-c"><div class="carga">Cargando…</div></div>`;
+  const { data, error } = await sb.from('solicitudes_habeas').select('*').order('created_at', { ascending: false });
+  const box = $('hab-c'); if (!box) return;
+  if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
+  if (!(data || []).length) { box.innerHTML = `<div class="empty">No tienes solicitudes. Tus pacientes pueden enviarlas desde tu página de reservas.</div>`; return; }
+  box.innerHTML = data.map(x => {
+    const t = TIPO_HAB[x.tipo] || [x.tipo, 15], lim = sumarHabiles(x.created_at, t[1]), dias = Math.ceil((lim - new Date()) / 86400000), abierta = x.estado !== 'respondida';
+    const asunto = `Respuesta a su solicitud de ${t[0].toLowerCase()} - ${S.prof.nombre}`;
+    return `<div class="card"><div class="row"><div class="grow"><b>${esc(t[0])}</b><div class="sub">${esc(x.nombres)} · CC ${esc(x.documento)}</div><div class="sub">${esc(x.email)}</div></div>
+      <span class="badge ${x.estado === 'respondida' ? 'b-ok' : x.estado === 'en_tramite' ? 'b-conf' : 'b-pend'}">${x.estado === 'respondida' ? 'Respondida' : x.estado === 'en_tramite' ? 'En trámite' : 'Recibida'}</span></div>
+      ${x.mensaje ? `<p style="font-size:14px;margin-top:8px;white-space:pre-wrap">${esc(x.mensaje)}</p>` : ''}
+      <div class="sub" style="margin-top:6px">Recibida: ${esc(fecha(x.created_at, { day: 'numeric', month: 'short', year: 'numeric' }))}${abierta ? ` · <b style="color:${dias <= 3 ? 'var(--bad)' : 'inherit'}">Vence: ${esc(lim.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }))} (${dias <= 0 ? 'vencida' : dias + ' días'})</b>` : ''}</div>
+      <div class="acciones"><a class="btn sm ghost" href="mailto:${encodeURIComponent(x.email)}?subject=${encodeURIComponent(asunto)}">✉️ Responder</a>
+      ${x.estado === 'recibida' ? `<button class="btn sm ghost" onclick="estadoHabeas('${x.id}','en_tramite')">En trámite</button>` : ''}
+      ${abierta ? `<button class="btn sm" onclick="estadoHabeas('${x.id}','respondida')">✓ Respondida</button>` : ''}</div></div>`;
+  }).join('') + `<p class="mini">Los plazos no descuentan festivos; tómalos como referencia.</p>`;
+}
+async function estadoHabeas(id, estado){
+  const { error } = await sb.from('solicitudes_habeas').update({ estado }).eq('id', id);
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Actualizado'); vistaHabeas();
+}
+
+/* =========================================================
+   PÁGINAS PÚBLICAS NUEVAS: reseña, directorio, lista de espera
+   ========================================================= */
+const RTOKEN = /^[0-9a-f-]{36}$/i.test(new URLSearchParams(location.search).get('r') || '') ? new URLSearchParams(location.search).get('r') : '';
+const ES_DIR = new URLSearchParams(location.search).has('dir');
+const RS = { info: null, estrellas: 0 };
+async function paginaResena(){
+  const { data } = await sb.rpc('resena_info', { p_token: RTOKEN });
+  if (!data) { app.innerHTML = `<header><h1>Consulta LV</h1></header><div class="wrap"><div class="empty">Este enlace de reseña no es válido.</div></div>`; return; }
+  RS.info = data;
+  if (data.hecha) { graciasResena(); return; }
+  const f = fotoSegura(data.foto);
+  app.innerHTML = `<header style="padding-bottom:70px"><small>Reseña verificada</small></header><div class="wrap" style="padding-bottom:40px">
+  <div class="perfil">${f ? `<img class="foto foto-g" src="${esc(f)}" alt="">` : `<div class="foto foto-g" style="display:inline-flex;align-items:center;justify-content:center;font-size:40px">🧠</div>`}
+  <h1>${esc(data.profesional)}</h1><div class="sub">${esc(data.titulo)} · Cita del ${esc(fecha(data.fecha, { day: 'numeric', month: 'long' }))}</div></div>
+  <div class="card" style="margin-top:16px;text-align:center"><h3>¿Cómo fue tu experiencia?</h3><div class="estrellas" id="rs-st">${[1, 2, 3, 4, 5].map(i => `<button onclick="marcarEstrellas(${i})">☆</button>`).join('')}</div>
+  <div class="sub" id="rs-tx">Toca las estrellas</div></div>
+  <div class="card"><label>Cuéntale a otros pacientes (opcional)</label><textarea id="rs-com" maxlength="600" placeholder="Ej: Me sentí escuchado, explica con claridad, puntual…"></textarea>
+  <div class="aviso warn" style="font-size:13px">Tu opinión será pública. Por tu privacidad, no escribas diagnósticos, síntomas ni detalles de tu proceso.</div>
+  <label class="check"><input type="checkbox" id="rs-nom"><span>Mostrar mi primer nombre y la inicial del apellido. Si no lo marcas, aparecerás como "Paciente verificado".</span></label>
+  <button class="btn full" id="rs-btn" onclick="enviarResena()">Publicar reseña</button></div>
+  <div class="pie">Solo los pacientes que asistieron a una cita reciben este enlace, y se puede usar una sola vez.<br>Consulta LV · LV Studio</div></div>`;
+}
+function marcarEstrellas(n){
+  RS.estrellas = n;
+  [...$('rs-st').children].forEach((b, i) => { b.textContent = i < n ? '★' : '☆'; b.classList.toggle('on', i < n); });
+  $('rs-tx').textContent = ['', 'Mala', 'Regular', 'Buena', 'Muy buena', 'Excelente'][n];
+}
+async function enviarResena(){
+  if (!RS.estrellas) { toast('Elige de 1 a 5 estrellas', true); return; }
+  const b = $('rs-btn'); b.disabled = true;
+  const { error } = await sb.rpc('dejar_resena', { p_token: RTOKEN, p_estrellas: RS.estrellas, p_comentario: $('rs-com').value, p_mostrar_nombre: $('rs-nom').checked });
+  if (error) { b.disabled = false; toast(mensajeError(error), true); return; }
+  graciasResena();
+}
+function graciasResena(){
+  app.innerHTML = `<header><h1>¡Gracias! 💙</h1></header><div class="wrap"><div class="card" style="text-align:center"><p style="font-size:15px;line-height:1.6">Tu reseña ayuda a otras personas a encontrar el apoyo que necesitan.</p>
+  ${RS.info && RS.info.slug ? `<a class="btn full ghost" href="${esc(urlPublica('?p=' + RS.info.slug))}">Ver perfil de ${esc(RS.info.profesional)}</a>` : ''}</div></div>`;
+}
+
+const DIR = { q: '', ciudad: '', mod: '', t: null };
+function paginaDirectorio(){
+  app.innerHTML = `<header style="padding-bottom:26px"><small>Consulta LV</small><h1>Encuentra tu psicólogo</h1></header><div class="wrap" style="padding-bottom:70px">
+  <div class="card"><label>¿Con qué necesitas ayuda?</label><input id="d-q" maxlength="60" placeholder="Ej: ansiedad, duelo, pareja, niños" oninput="buscarDir()">
+  <label>Ciudad</label><input id="d-ciudad" maxlength="60" placeholder="Ej: Cali" oninput="buscarDir()">
+  <div class="chips" style="margin-top:10px">${[['', 'Todas'], ['virtual', '💻 Virtual'], ['presencial', '🏢 Presencial']].map(m => `<div class="chip ${DIR.mod === m[0] ? 'on' : ''}" data-m="${m[0]}" onclick="DIR.mod='${m[0]}';document.querySelectorAll('[data-m]').forEach(c=>c.classList.toggle('on',c.dataset.m===DIR.mod));buscarDir(true)">${m[1]}</div>`).join('')}</div></div>
+  <div id="d-res"><div class="carga">Buscando…</div></div>
+  <div class="pie">Todos los profesionales declaran tarjeta profesional vigente.<br>¿Eres psicólogo(a)? <a href="${esc(urlPublica(''))}">Crea tu perfil gratis</a></div></div>
+  <div class="crisis"><span>¿Estás en crisis?</span><span><a href="tel:106">📞 Línea 106</a> · <a href="tel:123">🚨 123</a></span></div>`;
+  buscarDir(true);
+}
+function buscarDir(ya){
+  clearTimeout(DIR.t);
+  DIR.t = setTimeout(async () => {
+    const { data, error } = await sb.rpc('directorio', { p_buscar: $('d-q').value, p_ciudad: $('d-ciudad').value, p_modalidad: DIR.mod });
+    const box = $('d-res'); if (!box) return;
+    if (error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
+    const l = data || [];
+    box.innerHTML = `<p class="mini" style="margin:4px 2px 10px">${l.length} profesional${l.length === 1 ? '' : 'es'}</p>` + (l.length ? l.map(p => { const f = fotoSegura(p.foto), esp = lista(p.especialidades).slice(0, 4), mods = p.modalidades || [];
+      return `<a class="card dircard" href="${esc(urlPublica('?p=' + p.slug))}"><div class="row" style="align-items:flex-start">
+        ${f ? `<img class="foto" src="${esc(f)}" alt="" style="width:64px;height:64px;object-fit:cover">` : `<div class="foto" style="width:64px;height:64px;display:flex;align-items:center;justify-content:center;font-size:28px">🧠</div>`}
+        <div class="grow"><b style="font-size:16px">${esc(p.nombre)}</b><div class="sub">${esc(p.titulo)}${p.ciudad ? ' · ' + esc(p.ciudad) : ''}</div>
+        ${p.n ? `<div style="font-size:13px;margin-top:2px"><span style="color:#f59e0b">★</span> <b>${esc(p.promedio)}</b> <span class="sub">(${p.n} reseña${p.n > 1 ? 's' : ''})</span></div>` : ''}
+        ${p.enfoque ? `<div class="sub">🧠 ${esc(p.enfoque)}${p.experiencia ? ' · ' + p.experiencia + ' años' : ''}</div>` : ''}</div></div>
+        ${esp.length ? `<div class="tags" style="justify-content:flex-start;margin-top:8px">${esp.map(e => `<span class="tag v">${esc(e)}</span>`).join('')}</div>` : ''}
+        <div class="row" style="margin-top:8px"><span class="sub grow">${mods.includes('virtual') || mods.includes('ambas') ? '💻 Virtual ' : ''}${mods.includes('presencial') || mods.includes('ambas') ? '🏢 Presencial' : ''}</span>
+        ${p.precio_desde ? `<span class="sub">Desde <b style="color:var(--pri)">${esc(peso(p.precio_desde))}</b></span>` : ''}</div>
+        <div class="btn sm full" style="margin-top:10px">Ver perfil y reservar</div></a>`; }).join('')
+      : `<div class="empty">No encontramos profesionales con esos filtros. Prueba con otra palabra o quita la ciudad.</div>`);
+  }, ya ? 0 : 350);
+}
+
+function formEspera(){
+  const sv = (R.perfil.servicios || []);
+  abrirModal(`<h3>⏳ Lista de espera</h3><p class="mini">Si se libera un espacio, ${esc(R.perfil.nombre)} te escribirá por WhatsApp.</p>
+  ${sv.length > 1 ? `<label>Servicio</label><select id="le-serv"><option value="">Cualquiera</option>${sv.map(s => `<option value="${esc(s.id)}" ${R.serv && R.serv.id === s.id ? 'selected' : ''}>${esc(s.nombre)}</option>`).join('')}</select>` : ''}
+  <label>Nombre completo</label><input id="le-nom" maxlength="120" autocomplete="name">
+  <div class="fila"><div><label>Celular (WhatsApp)</label><input id="le-tel" maxlength="15" inputmode="tel" autocomplete="tel"></div><div><label>Correo (opcional)</label><input id="le-email" type="email" maxlength="120"></div></div>
+  <label>¿Qué días u horas te sirven?</label><input id="le-pref" maxlength="300" placeholder="Ej: lunes o miércoles después de las 5 p. m.">
+  <label class="check"><input type="checkbox" id="le-aut"><span>Autorizo el uso de mis datos para que me contacten sobre un espacio disponible. <a href="#" onclick="verLegal('datos');return false">Leer</a></span></label>
+  <button class="btn full" id="le-btn" onclick="enviarEspera()">Anotarme</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function enviarEspera(){
+  if (!$('le-aut').checked) { toast('Debes aceptar la autorización de datos', true); return; }
+  const b = $('le-btn'); b.disabled = true;
+  const servicio = $('le-serv') ? $('le-serv').value : ((R.perfil.servicios || [])[0] || {}).id;
+  const { error } = await sb.rpc('unirse_espera', { p_slug: SLUG, p_servicio: servicio || null, p_nombres: $('le-nom').value, p_telefono: $('le-tel').value,
+    p_email: $('le-email').value, p_preferencia: $('le-pref').value, p_acepta_datos: true });
+  if (error) { b.disabled = false; toast(mensajeError(error), true); return; }
+  cerrarModal(); toast('¡Listo! Quedaste en la lista de espera ✅');
+}
+function htmlPagoPublico(p){
+  const enl = /^https:\/\/[^\s"'<>]+$/i.test(p.enlace_pago || '') ? p.enlace_pago : '';
+  if (!p.nequi && !p.datos_pago && !enl) return '';
+  return `<div class="card"><h3>💳 Cómo pagar</h3>
+    ${p.nequi ? `<div class="franja"><span>📱 Nequi: <b>${esc(p.nequi)}</b></span><button class="btn sm ghost" onclick="copiar('${esc(soloDigitos(p.nequi))}')">Copiar</button></div>` : ''}
+    ${p.datos_pago ? `<p style="font-size:14px;white-space:pre-wrap;margin:6px 0">${esc(p.datos_pago)}</p>` : ''}
+    ${enl ? `<a class="btn full" target="_blank" rel="noopener" href="${esc(enl)}">Pagar en línea (tarjeta, PSE)</a>` : ''}</div>`;
+}
+function htmlResenasPublicas(p){
+  const l = p.resenas || [];
+  if (!l.length) return '';
+  return `<div class="card"><div class="row"><h3 class="grow" style="margin:0">⭐ Opiniones verificadas</h3><b style="font-size:18px">${esc(p.promedio)}</b><span style="color:#f59e0b;margin-left:4px">★</span></div>
+    <p class="mini" style="margin-top:2px">${p.n_resenas} reseña${p.n_resenas > 1 ? 's' : ''} de pacientes que asistieron a una cita.</p>
+    ${l.map((r, i) => `<div class="resena" ${i >= 3 ? 'style="display:none" data-mas' : ''}><div class="row"><b class="grow">${esc(r.a)}</b><span style="color:#f59e0b;font-size:13px">${estrellas(r.e)}</span></div>
+      <div class="sub">${esc(fecha(r.f, { month: 'long', year: 'numeric' }))}</div>${r.c ? `<p>${esc(r.c)}</p>` : ''}${r.rp ? `<div class="resp"><b>Respuesta del profesional:</b> ${esc(r.rp)}</div>` : ''}</div>`).join('')}
+    ${l.length > 3 ? `<button class="btn sm ghost" onclick="document.querySelectorAll('[data-mas]').forEach(e=>e.style.display='');this.remove()">Ver todas (${l.length})</button>` : ''}</div>`;
+}
+
 /* ===== INICIO ===== */
 (async function iniciar(){
+  if (RTOKEN) { paginaResena(); return; }
+  if (ES_DIR) { paginaDirectorio(); return; }
   if (SLUG) { paginaPublica(); return; }
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') pantallaNuevaClave(); });
   if (/type=recovery/.test(location.hash)) return;
