@@ -171,7 +171,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.0';
+const VERSION = '3.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -245,7 +245,7 @@ function textoDatos(nombre){
   <p>De acuerdo con la Ley 1581 de 2012 y el Decreto 1377 de 2013, autorizo a <b>${esc(nombre)}</b> (responsable del tratamiento) para recolectar, almacenar y usar mis datos personales, incluidos <b>datos sensibles de salud</b>, con estas finalidades:</p>
   <ul><li>Agendar, confirmar y recordar mis citas.</li><li>Prestar el servicio de psicología y llevar mi historia clínica.</li><li>Contactarme por teléfono, WhatsApp o correo sobre mi atención.</li></ul>
   <p>Sé que responder preguntas sobre datos sensibles es <b>facultativo</b>. Tengo derecho a conocer, actualizar, rectificar y solicitar la supresión de mis datos, y a revocar esta autorización, salvo cuando exista un deber legal de conservarlos: la historia clínica se conserva mínimo 15 años (Resolución 839 de 2017).</p>
-  <p>La plataforma tecnológica es provista por <b>LV Studio</b> como encargado del tratamiento. Los datos se almacenan cifrados en servidores ubicados en Estados Unidos, país reconocido por la SIC con nivel adecuado de protección.</p>
+  <p>La plataforma tecnológica es provista por <b>LV Studio</b> como encargado del tratamiento. Los datos se almacenan cifrados en servidores ubicados en Estados Unidos, país reconocido por la SIC con nivel adecuado de protección. Los recordatorios por correo se envían a través de Brevo, con servidores en la Unión Europea, también con nivel adecuado de protección.</p>
   <p>Puedo ejercer mis derechos desde el enlace "Mis derechos sobre mis datos" en esta página.</p>`;
 }
 function textoConsentimiento(nombre){
@@ -350,7 +350,7 @@ function pintarFormReserva(){
     <label>Nombre completo</label><input id="r-nombre" maxlength="120" autocomplete="name">
     <div class="fila"><div><label>Documento</label><input id="r-doc" maxlength="20" inputmode="numeric"></div>
     <div><label>Celular (WhatsApp)</label><input id="r-tel" maxlength="15" inputmode="tel" autocomplete="tel"></div></div>
-    <label>Correo (opcional)</label><input id="r-email" type="email" maxlength="120" autocomplete="email">
+    <label>Correo (opcional, para enviarte el recordatorio)</label><input id="r-email" type="email" maxlength="120" autocomplete="email">
     <label class="check"><input type="checkbox" id="r-datos"><span>Autorizo el tratamiento de mis datos personales y sensibles. <a href="#" onclick="verLegal('datos');return false">Leer autorización</a></span></label>
     <label class="check"><input type="checkbox" id="r-cons"><span>Acepto el consentimiento informado para atención psicológica. <a href="#" onclick="verLegal('cons');return false">Leer consentimiento</a></span></label>
     <button class="btn full" id="r-btn" onclick="confirmarReserva()">Confirmar reserva</button>
@@ -383,6 +383,9 @@ async function confirmarReserva(){
   app.innerHTML = `<header><h1>¡Cita reservada! ✅</h1></header><div class="wrap">
     <div class="card"><div class="aviso ok"><b>${esc(R.serv.nombre)}</b><br>📅 ${esc(cuando)}<br>👤 con ${esc(p.nombre)}</div>
     <p style="font-size:14px;line-height:1.5">Tu cita quedó <b>pendiente de confirmación</b>. ${esc(p.nombre)} te contactará para confirmarla${R.serv.precio ? ' y coordinar el pago' : ''}.</p>
+    <p style="font-size:14px;font-weight:700;margin-top:12px">Guárdala en tu calendario para que tu celular te avise 1 día y 1 hora antes:</p>
+    ${botonesCalendario('Cita con ' + p.nombre, R.hora, new Date(new Date(R.hora).getTime() + R.serv.duracion * 60000).toISOString(), R.serv.nombre + (p.whatsapp ? ' · WhatsApp del profesional: ' + p.whatsapp : ''), R.serv.modalidad === 'presencial' ? p.direccion : '')}
+    ${v('r-email') ? `<p class="mini">📧 También te enviaremos un recordatorio a ${esc(v('r-email'))} el día anterior.</p>` : ''}
     ${R.serv.precio ? htmlPagoPublico(p).replace('class="card"', 'style="margin:12px 0"') : ''}
     ${p.whatsapp ? `<a class="btn full" href="https://wa.me/${waNum(p.whatsapp)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Avisar por WhatsApp</a>` : ''}
     <p class="mini">Si se te presenta una emergencia emocional, comunícate con la Línea 106 o el 123.</p></div></div>`;
@@ -528,7 +531,7 @@ async function vistaInicio(){
     <p class="bienv-f">“${esc(FRASES[dia % FRASES.length])}”</p></div>
   <div id="ini-c"><div class="carga" style="padding:30px">Preparando tu resumen…</div></div>`;
   const [ci, sv, di, pa, ll, le, hb] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,recordatorio_at,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', mesIni + 'T00:00:00-05:00').lt('inicio', sumarDias(hoy, 8) + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('servicios').select('id').eq('activo', true),
     sb.from('disponibilidad').select('id'),
@@ -618,7 +621,7 @@ async function cargarAgenda(){
   const dias = diasVista(), g0 = lunes(A.mes + '-01'), g1 = sumarDias(g0, 42);
   const desde = [dias[0], g0].sort()[0], hasta = [sumarDias(dias[dias.length - 1], 1), g1].sort()[1];
   const [c, d] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,recordatorio_at,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', desde + 'T00:00:00-05:00').lt('inicio', hasta + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('disponibilidad').select('dia,hora_inicio,hora_fin')]);
   if (c.error || d.error) { const box = $('ag-cen'); if (box) box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || d.error))}</div>`; return; }
@@ -738,6 +741,7 @@ function detalleCita(id){
     💼 ${esc((c.servicios || {}).nombre || 'Cita')}<br>
     💵 ${c.valor ? peso(c.valor) : 'Sin valor'} · ${c.pagado ? '✅ Pagada' + (METODOS[c.metodo_pago] ? ' (' + METODOS[c.metodo_pago].replace(/^\S+\s/, '') + ')' : '') : 'Pendiente de pago'}<br>
     ${c.serie ? '🔁 Cita recurrente<br>' : ''}
+    ${c.recordatorio_at ? `📧 Recordatorio enviado: ${esc(fecha(c.recordatorio_at, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}<br>` : ''}
     ${pa.telefono ? `📱 ${esc(pa.telefono)}<br>` : ''}
     ${c.origen === 'online' ? '🌐 Reservada en línea por el paciente' : '✍️ Agendada por ti'}
   </div>
@@ -746,6 +750,7 @@ function detalleCita(id){
     ${pa.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(c))}">💬 Recordar</a>` : ''}
     ${/^https:\/\//.test(c.enlace_virtual || '') ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(c.enlace_virtual)}">🎥 Entrar</a>` : ''}
     <button class="btn sm ghost" onclick="cerrarModal();abrirFicha('${c.paciente_id}')">🗂️ Ver ficha</button>
+    <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceGoogleCal('Cita: ' + (pa.nombres || 'Paciente'), c.inicio, c.fin, (c.servicios || {}).nombre || '', ''))}">📅 A mi calendario</a>
     <button class="btn sm ${c.pagado ? '' : 'ghost'}" onclick="${c.pagado ? `pagoCita('${c.id}',false)` : `elegirPago('${c.id}')`}">${c.pagado ? '✓ Pagada' : '💵 Marcar pagada'}</button>
     ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="pedirResena('${c.id}')">⭐ Pedir reseña</button>` : ''}
   </div>
@@ -883,6 +888,7 @@ function vistaPerfil(){
   <label>Otros datos de pago (opcional)</label><textarea id="p-dpago" maxlength="300" style="min-height:60px" placeholder="Ej: Bancolombia ahorros 000-000000-00 a nombre de Ana Gómez · Llave Bre-B: @anagomez">${esc(p.datos_pago || '')}</textarea>
   <label>Enlace de pago en línea (opcional)</label><input id="p-epago" maxlength="300" value="${esc(p.enlace_pago || '')}" placeholder="https://… (Bold, Wompi, Mercado Pago)">
   <p class="mini">Crea un link de cobro gratis en Bold, Wompi o Mercado Pago y pégalo aquí: tus pacientes pagan con tarjeta o PSE y el dinero llega directo a tu cuenta.</p>
+  <label class="check"><input type="checkbox" id="p-rec-on" ${p.recordatorios_email !== false ? 'checked' : ''}><span><b>Recordatorio automático por correo</b> a tus pacientes 24 horas antes de la cita (solo a quienes tengan correo registrado).</span></label>
   <label class="check"><input type="checkbox" id="p-dir-on" ${p.en_directorio ? 'checked' : ''}><span><b>Aparecer en el directorio de Consulta LV</b> para que nuevos pacientes me encuentren por tema y ciudad. <a href="${esc(urlPublica('?dir=1'))}" target="_blank" rel="noopener">Ver directorio</a></span></label>
   <label>Tu enlace de reservas</label><input id="p-slug" maxlength="40" value="${esc(p.slug || '')}" placeholder="ej: ana-gomez-psicologa" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
   <p class="mini">Quedará así: ${esc(location.origin + location.pathname)}?p=<b id="p-prev">${esc(p.slug || 'tu-nombre')}</b></p>
@@ -900,7 +906,7 @@ async function guardarPerfil(){
     idiomas: $('p-idiomas').value.trim(), poblacion: $('p-pob').value.trim(), especialidades: $('p-esp').value.trim(),
     formacion: $('p-form').value.trim(),
     direccion: $('p-dir').value.trim(), nequi: soloDigitos($('p-nequi').value),
-    datos_pago: $('p-dpago').value.trim(), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked,
+    datos_pago: $('p-dpago').value.trim(), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
     slug: $('p-slug').value.trim().replace(/^-+|-+$/g, '') };
   if (d.nombre.length < 3) { toast('Escribe tu nombre completo', true); return; }
   if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
@@ -1405,6 +1411,30 @@ function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = az
 function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
 function urlPublica(q){ return location.origin + location.pathname + q; }
 function estrellas(n){ n = Math.round(n || 0); return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+/* --- CALENDARIO (Google y .ics) --- */
+function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+function enlaceGoogleCal(t, ini, fin, det, lugar){
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(t) + '&dates=' + fechaCal(ini) + '/' + fechaCal(fin)
+    + (det ? '&details=' + encodeURIComponent(det) : '') + (lugar ? '&location=' + encodeURIComponent(lugar) : '');
+}
+function icsTexto(t){ return String(t || '').replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1').replace(/\r?\n/g, '\\n'); }
+function descargarIcs(t, ini, fin, det, lugar){
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//LV Studio//Consulta LV//ES', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+    'UID:' + uuid() + '@consultalv', 'DTSTAMP:' + fechaCal(new Date().toISOString()), 'DTSTART:' + fechaCal(ini), 'DTEND:' + fechaCal(fin),
+    'SUMMARY:' + icsTexto(t), det ? 'DESCRIPTION:' + icsTexto(det) : '', lugar ? 'LOCATION:' + icsTexto(lugar) : '',
+    'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsTexto(t + ' es mañana'), 'END:VALARM',
+    'BEGIN:VALARM', 'TRIGGER:-PT1H', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsTexto(t + ' en 1 hora'), 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'].filter(Boolean).join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+  a.download = 'cita.ics'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+const CAL = {};
+function botonesCalendario(t, ini, fin, det, lugar){
+  Object.assign(CAL, { t, ini, fin, det, lugar });
+  return `<div class="acciones"><a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceGoogleCal(t, ini, fin, det, lugar))}">📅 Google Calendar</a>
+    <button class="btn sm ghost" onclick="descargarIcs(CAL.t,CAL.ini,CAL.fin,CAL.det,CAL.lugar)">🍎 iPhone / otro calendario</button></div>`;
+}
 
 /* --- MÁS --- */
 function vistaMas(){
