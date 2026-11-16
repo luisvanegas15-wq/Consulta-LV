@@ -191,7 +191,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.4';
+const VERSION = '3.4.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -1660,12 +1660,14 @@ const HC = [
   ['mental', '6. Examen mental', [['em_apariencia', 'Apariencia y conducta', 'Ej: adecuada presentación personal, colaborador'], ['em_conciencia', 'Conciencia y orientación', 'Ej: alerta, orientado en tiempo, lugar y persona'],
     ['em_atencion', 'Atención y memoria', 'Ej: conservadas'], ['em_pensamiento', 'Lenguaje y pensamiento (curso y contenido)', 'Ej: lenguaje fluido, pensamiento lógico y coherente'], ['em_percepcion', 'Sensopercepción', 'Ej: sin alteraciones'],
     ['em_afecto', 'Afecto y estado de ánimo', 'Ej: ansioso, congruente con el discurso'], ['em_juicio', 'Juicio, introspección y prospección', 'Ej: conservados']]],
-  ['dx', '7. Impresión diagnóstica', [['dx', 'Impresión diagnóstica (CIE-10 / CIE-11 / DSM-5-TR)', 'Ej: F41.1 Trastorno de ansiedad generalizada (provisional)', 1], ['dx_dif', 'Diagnóstico diferencial']]],
+  ['dx', '7. Pruebas e impresión diagnóstica', [['pruebas', 'Pruebas psicológicas aplicadas y resultados', 'Ej: PHQ-9 = 14 (moderada), GAD-7 = 12 (moderada)', 1], ['funcionamiento', 'Funcionamiento actual (familiar, laboral/académico, social)', '', 1], ['dx', 'Impresión diagnóstica (CIE-10 / CIE-11 / DSM-5-TR)', 'Ej: F41.1 Trastorno de ansiedad generalizada (provisional)', 1], ['dx_dif', 'Diagnóstico diferencial']]],
   ['plan', '8. Plan de intervención', [['objetivos', 'Objetivos terapéuticos', '', 1], ['enfoque', 'Enfoque y técnicas', 'Ej: cognitivo conductual: psicoeducación, reestructuración, exposición'],
     ['frecuencia', 'Frecuencia y número estimado de sesiones', 'Ej: semanal, 10 a 12 sesiones'], ['recomendaciones', 'Recomendaciones y remisiones', '', 1]]]];
 const PLANT_BASE = [
   { id: 'b-cierre', nombre: 'Cierre del proceso (epicrisis)', campos: ['Resumen del proceso terapéutico', 'Logros frente a los objetivos', 'Estado del paciente al egreso', 'Motivo del cierre', 'Recomendaciones y seguimiento'] },
   { id: 'b-remision', nombre: 'Remisión / interconsulta', campos: ['Profesional o servicio al que se remite', 'Motivo de la remisión', 'Resumen clínico pertinente', 'Pregunta o solicitud concreta'] },
+  { id: 'b-dap', nombre: 'Evolución DAP (breve)', campos: ['D · Datos (lo que reporta y lo observado)', 'A · Análisis (interpretación clínica y avance)', 'P · Plan (próximos pasos y tareas)'] },
+  { id: 'b-seguridad', nombre: 'Plan de seguridad (crisis / riesgo suicida)', campos: ['Señales de alerta personales', 'Estrategias propias de afrontamiento', 'Personas y lugares que ayudan a distraerse', 'Personas a quienes puede pedir ayuda (nombre y celular)', 'Profesionales y líneas de emergencia (106 · 123 · urgencias)', 'Cómo hacer el entorno más seguro (restricción de medios)', 'Razones para vivir'] },
   { id: 'b-soap', nombre: 'Evolución SOAP', campos: ['S · Subjetivo (lo que reporta el paciente)', 'O · Objetivo (lo observado, escalas)', 'A · Análisis (avance frente a objetivos)', 'P · Plan (próximos pasos y tareas)'] }];
 const esHC = n => n.d && n.d.tipo === 'historia';
 function historiaActual(){ return P.notas.find(esHC); }
@@ -1767,7 +1769,7 @@ function vistaGuia(){
     <li>La historia se conserva mínimo <b>15 años</b> desde la última atención (Res. 839 de 2017). La app no permite borrarla.</li></ol>`)}
   ${s('🚨 Si hay riesgo', `<ul>
     <li>Indaga ideación, plan, medios e intentos previos. No dejes sola a la persona si el riesgo es inminente.</li>
-    <li>Construye un plan de seguridad y activa la red de apoyo (contacto de emergencia).</li>
+    <li>Construye con la persona un <b>plan de seguridad</b>: en la ficha, "📝 Nota de evolución" → formato <b>"Plan de seguridad"</b>. Activa la red de apoyo (contacto de emergencia).</li>
     <li>Riesgo inminente: urgencias, <b>Línea 106</b> o <b>123</b>. Ante violencia contra menores: ICBF <b>141</b>.</li>
     <li>El secreto profesional puede levantarse cuando hay riesgo grave para la vida (Ley 1090 de 2006).</li>
     <li>Documenta todo en la nota, con las acciones realizadas.</li></ul>`)}
