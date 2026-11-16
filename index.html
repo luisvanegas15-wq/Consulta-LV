@@ -191,7 +191,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.4.1';
+const VERSION = '3.5';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -1266,13 +1266,12 @@ function pintarFicha(){
     ${!p.consentimiento_at ? `<div class="aviso warn" style="margin-top:10px">Falta registrar el consentimiento informado de este paciente.</div>` : ''}
     <div class="acciones">
       ${historiaActual() ? `<button class="btn sm" onclick="formNota()">📝 Nota de evolución</button>` : `<button class="btn sm" onclick="formHistoria()">📋 Crear historia clínica</button>`}
-      <button class="btn sm ghost" onclick="formEscala('PHQ-9')">PHQ-9</button>
-      <button class="btn sm ghost" onclick="formEscala('GAD-7')">GAD-7</button>
+      <button class="btn sm ghost" onclick="elegirPrueba()">📊 Aplicar prueba</button>
       <button class="btn sm ghost" onclick="formCita({pacId:P.actual.id,nombre:P.actual.nombres,volver:'ficha'})">📅 Agendar</button>
       ${p.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.telefono)}">💬</a>` : ''}
       <button class="btn sm ghost" onclick="exportarHistoria()">📄 Historia clínica</button>
     </div></div>
-  <div class="tabs">${[['historia','Historia' + (historiaActual() ? '' : ' ⚠️')],['notas','Evolución (' + P.notas.filter(n => !esHC(n)).length + ')'],['escalas','Escalas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
+  <div class="tabs">${[['historia','Historia' + (historiaActual() ? '' : ' ⚠️')],['notas','Evolución (' + P.notas.filter(n => !esHC(n)).length + ')'],['escalas','Pruebas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
   <div id="ficha-c"></div>`;
   ({ historia: tabHistoria, notas: tabNotas, escalas: tabEscalas, archivos: tabArchivos, citas: tabCitas, datos: tabDatos })[P.tab]();
 }
@@ -1340,8 +1339,10 @@ async function guardarNota(id){
 
 /* --- ESCALAS --- */
 const OPC = ['Ningún día', 'Varios días', 'Más de la mitad de los días', 'Casi todos los días'];
+const F_AUDIT = ['Nunca', 'Menos de una vez al mes', 'Mensualmente', 'Semanalmente', 'A diario o casi a diario'];
+const SI_NO_AUDIT = [['No', 0], ['Sí, pero no en el último año', 2], ['Sí, en el último año', 4]];
 const ESCALAS = {
-  'PHQ-9': { nombre: 'PHQ-9 · Síntomas depresivos', max: 27, items: [
+  'PHQ-9': { nombre: 'PHQ-9 · Síntomas depresivos', corto: 'PHQ-9', max: 27, periodo: 'Durante las <b>últimas 2 semanas</b>, ¿con qué frecuencia le han molestado los siguientes problemas?', items: [
     'Poco interés o placer en hacer cosas',
     'Se ha sentido decaído(a), deprimido(a) o sin esperanzas',
     'Dificultad para quedarse o permanecer dormido(a), o ha dormido demasiado',
@@ -1351,8 +1352,9 @@ const ESCALAS = {
     'Dificultad para concentrarse en actividades como leer o ver televisión',
     'Se ha movido o hablado tan lento que otros lo han notado, o lo contrario: muy inquieto(a) o agitado(a)',
     'Pensamientos de que estaría mejor muerto(a) o de lastimarse de alguna manera'],
-    nivel: t => t <= 4 ? ['Mínima', 'b-ok'] : t <= 9 ? ['Leve', 'b-conf'] : t <= 14 ? ['Moderada', 'b-pend'] : t <= 19 ? ['Moderadamente severa', 'b-bad'] : ['Severa', 'b-bad'] },
-  'GAD-7': { nombre: 'GAD-7 · Síntomas de ansiedad', max: 21, items: [
+    nivel: t => t <= 4 ? ['Mínima', 'b-ok'] : t <= 9 ? ['Leve', 'b-conf'] : t <= 14 ? ['Moderada', 'b-pend'] : t <= 19 ? ['Moderadamente severa', 'b-bad'] : ['Severa', 'b-bad'],
+    alerta: r => r[8] > 0 ? 'Ítem 9 positivo: realiza la Valoración de riesgo suicida en esta sesión.' : '' },
+  'GAD-7': { nombre: 'GAD-7 · Síntomas de ansiedad', corto: 'GAD-7', max: 21, periodo: 'Durante las <b>últimas 2 semanas</b>, ¿con qué frecuencia le han molestado los siguientes problemas?', items: [
     'Se ha sentido nervioso(a), ansioso(a) o con los nervios de punta',
     'No ha sido capaz de parar o controlar su preocupación',
     'Se ha preocupado demasiado por motivos diferentes',
@@ -1360,45 +1362,137 @@ const ESCALAS = {
     'Se ha sentido tan inquieto(a) que no ha podido quedarse quieto(a)',
     'Se ha molestado o irritado fácilmente',
     'Ha tenido miedo de que algo terrible fuera a pasar'],
-    nivel: t => t <= 4 ? ['Mínima', 'b-ok'] : t <= 9 ? ['Leve', 'b-conf'] : t <= 14 ? ['Moderada', 'b-pend'] : ['Severa', 'b-bad'] }
+    nivel: t => t <= 4 ? ['Mínima', 'b-ok'] : t <= 9 ? ['Leve', 'b-conf'] : t <= 14 ? ['Moderada', 'b-pend'] : ['Severa', 'b-bad'] },
+  'PCL-5': { nombre: 'PCL-5 · Síntomas de estrés postraumático', corto: 'PCL-5', max: 80, opciones: ['Nada', 'Un poco', 'Moderadamente', 'Bastante', 'Extremadamente'],
+    periodo: 'Piense en la experiencia <b>más estresante</b> que ha vivido. En el <b>último mes</b>, ¿cuánto le han molestado estos problemas?',
+    fuente: 'PCL-5 (Weathers et al., 2013, National Center for PTSD) · Dominio público · Traducción de trabajo; versión oficial en ptsd.va.gov',
+    items: ['Recuerdos repetidos, perturbadores y no deseados de la experiencia', 'Sueños repetidos y perturbadores sobre la experiencia',
+      'Sentir o actuar de repente como si la experiencia estuviera ocurriendo de nuevo', 'Sentirse muy alterado(a) cuando algo le recuerda la experiencia',
+      'Reacciones físicas fuertes cuando algo le recuerda la experiencia (corazón acelerado, dificultad para respirar, sudor)', 'Evitar recuerdos, pensamientos o sentimientos relacionados con la experiencia',
+      'Evitar personas, lugares, conversaciones, actividades, objetos o situaciones que le recuerdan la experiencia', 'Dificultad para recordar partes importantes de la experiencia',
+      'Creencias negativas fuertes sobre usted, otras personas o el mundo', 'Culparse a sí mismo(a) o a otros por la experiencia o lo que pasó después',
+      'Sentimientos negativos intensos como miedo, horror, rabia, culpa o vergüenza', 'Pérdida de interés en actividades que antes disfrutaba',
+      'Sentirse distante o aislado(a) de otras personas', 'Dificultad para sentir emociones positivas (alegría o cariño por personas cercanas)',
+      'Irritabilidad, arrebatos de ira o actuar de forma agresiva', 'Arriesgarse demasiado o hacer cosas que podrían causarle daño',
+      'Estar en alerta excesiva, vigilante o en guardia', 'Sentirse nervioso(a) o asustarse con facilidad', 'Dificultad para concentrarse', 'Dificultad para dormirse o permanecer dormido(a)'],
+    nivel: t => t >= 31 ? ['Probable TEPT (≥ 31): confirmar con entrevista', 'b-bad'] : t >= 20 ? ['Síntomas relevantes, bajo el punto de corte', 'b-pend'] : ['Bajo el punto de corte', 'b-ok'] },
+  'AUDIT': { nombre: 'AUDIT · Consumo de alcohol (OMS)', corto: 'AUDIT', max: 40, periodo: 'Preguntas sobre su consumo de bebidas alcohólicas <b>durante el último año</b>.',
+    fuente: 'AUDIT · Organización Mundial de la Salud (Babor et al., 2001) · Libre uso',
+    items: [
+      { t: '¿Con qué frecuencia consume alguna bebida alcohólica?', o: [['Nunca', 0], ['Una vez al mes o menos', 1], ['2 a 4 veces al mes', 2], ['2 a 3 veces por semana', 3], ['4 o más veces por semana', 4]] },
+      { t: '¿Cuántos tragos o bebidas alcohólicas toma en un día típico en que bebe?', o: [['1 o 2', 0], ['3 o 4', 1], ['5 o 6', 2], ['7 a 9', 3], ['10 o más', 4]] },
+      { t: '¿Con qué frecuencia toma 6 o más bebidas alcohólicas en una sola ocasión?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: 'En el último año, ¿con qué frecuencia no pudo parar de beber una vez había empezado?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: 'En el último año, ¿con qué frecuencia dejó de hacer lo que se esperaba de usted porque había bebido?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: 'En el último año, ¿con qué frecuencia necesitó beber en la mañana para recuperarse de haber bebido mucho la noche anterior?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: 'En el último año, ¿con qué frecuencia sintió culpa o remordimiento después de beber?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: 'En el último año, ¿con qué frecuencia no pudo recordar lo que pasó la noche anterior porque había bebido?', o: F_AUDIT.map((l, v) => [l, v]) },
+      { t: '¿Usted u otra persona ha resultado herida porque usted había bebido?', o: SI_NO_AUDIT },
+      { t: '¿Algún familiar, amigo, médico u otro profesional se ha preocupado por su forma de beber o le ha sugerido que beba menos?', o: SI_NO_AUDIT }],
+    nivel: t => t <= 7 ? ['Zona I · Bajo riesgo: educación', 'b-ok'] : t <= 15 ? ['Zona II · Consumo de riesgo: consejo breve', 'b-conf'] : t <= 19 ? ['Zona III · Consumo perjudicial: intervención y seguimiento', 'b-pend'] : ['Zona IV · Posible dependencia: remitir a especialista', 'b-bad'] },
+  'RIESGO': { nombre: 'Valoración estructurada de riesgo suicida', corto: 'Riesgo suicida', max: 0, opciones: ['No', 'Sí'],
+    periodo: 'Entrevista clínica. Pregunte de forma directa y sin juicio. Este registro <b>orienta, no reemplaza</b> tu juicio clínico.',
+    fuente: 'Formato propio de Consulta LV basado en criterios clínicos de valoración de riesgo',
+    items: ['En el último mes, ¿ha deseado estar muerto(a) o dormirse y no despertar?', 'En el último mes, ¿ha tenido pensamientos de quitarse la vida?',
+      '¿Ha pensado en cómo lo haría (un método)?', '¿Tiene intención de actuar según esos pensamientos?', '¿Ha elaborado un plan (cuándo, dónde, cómo)?',
+      '¿Tiene acceso a medios letales (medicamentos, armas, tóxicos, alturas)?', 'En los últimos 3 meses, ¿ha hecho algo para prepararse o ha intentado quitarse la vida?',
+      '¿Ha intentado quitarse la vida alguna vez en su vida?', '¿Se ha autolesionado recientemente?'],
+    evaluar: r => r[3] || r[4] || r[6] ? ['Riesgo alto', 'b-bad'] : r[1] || r[2] || r[5] && r[0] || r[7] || r[8] ? ['Riesgo medio', 'b-pend'] : r[0] ? ['Riesgo bajo', 'b-conf'] : ['Sin riesgo identificado', 'b-ok'],
+    alerta: r => r[3] || r[4] || r[6] ? 'Riesgo alto: no dejes sola a la persona, activa la red de apoyo y remite a urgencias o Línea 106 / 123. Construye el plan de seguridad y documenta.' : r[1] || r[2] || r[7] || r[8] ? 'Riesgo medio: elabora un plan de seguridad (formato "Plan de seguridad" en Notas), restringe medios y aumenta la frecuencia de seguimiento.' : '' }
 };
+const EXTERNAS = ['BDI-II (Inventario de Depresión de Beck)', 'BAI (Inventario de Ansiedad de Beck)', 'STAI (Ansiedad Estado-Rasgo)', 'C-SSRS (Escala de Columbia)', 'ICG (Inventario de Duelo Complicado)', 'ASRS v1.1 (TDAH adultos)', 'CDI (Depresión infantil)', 'SDQ (Fortalezas y dificultades)', 'MMPI-2 / MMPI-2-RF', 'SCL-90-R', 'WAIS / WISC', 'MoCA / MMSE', 'Otra'];
+const MOTIVOS = [
+  ['Ansiedad', /ansie|nervio|p[áa]nico|preocupa|fobia/i, ['GAD-7'], ['BAI', 'STAI']],
+  ['Depresión', /depre|triste|des[áa]nimo|desesperanza|llanto/i, ['PHQ-9', 'RIESGO'], ['BDI-II']],
+  ['Riesgo suicida', /suicid|quitarse la vida|autoles|morir|matarse/i, ['RIESGO', 'PHQ-9'], ['C-SSRS']],
+  ['Trauma o violencia', /trauma|violen|abuso|agres|accidente|desastre|terremoto|v[íi]ctima|conflicto armado|asalto/i, ['PCL-5', 'PHQ-9'], []],
+  ['Consumo de alcohol', /alcohol|licor|trago|bebe|bebid|borrach|embriag|resaca/i, ['AUDIT'], []],
+  ['Duelo', /duelo|muerte de|falleci|p[ée]rdida/i, ['PHQ-9', 'RIESGO'], ['ICG']],
+  ['Atención / TDAH', /tdah|atenci[óo]n|concentra|hiperactiv|impulsiv/i, ['GAD-7'], ['ASRS v1.1']],
+  ['Niños y adolescentes', /ni[ñn]o|ni[ñn]a|adolescen|colegio|escolar|hijo/i, ['PHQ-9'], ['CDI', 'SDQ']]];
+function sugerirPruebas(){
+  const h = historiaActual(), txt = h ? Object.values(h.d.hc || {}).join(' ') : '';
+  return MOTIVOS.filter(m => m[1].test(txt));
+}
+function elegirPrueba(motivo){
+  const sug = sugerirPruebas(), sel = motivo ? MOTIVOS.filter(m => m[0] === motivo) : sug;
+  const rec = [...new Set(sel.flatMap(m => m[2]))], ext = [...new Set(sel.flatMap(m => m[3]))];
+  abrirModal(`<h3>📊 Aplicar prueba</h3>
+  <label>Motivo de consulta</label><div class="chips">${MOTIVOS.map(m => `<div class="chip ${sel.includes(m) ? 'on' : ''}" onclick="elegirPrueba('${m[0]}')">${m[0]}</div>`).join('')}</div>
+  ${sel.length ? `<div class="aviso info" style="font-size:13px;margin-top:10px">${motivo ? '' : '✨ Sugeridas según la historia clínica. '}Recomendadas: <b>${rec.map(k => ESCALAS[k].corto).join(', ')}</b>${ext.length ? `<br>Con licencia (aplícalas en físico y regístralas como externas): ${ext.join(', ')}` : ''}</div>` : `<p class="mini">Elige el motivo de consulta para ver qué pruebas se recomiendan.</p>`}
+  <div class="menu-mas" style="margin-top:10px">${Object.entries(ESCALAS).map(([k, e]) => `<button onclick="formEscala('${k}')"><i>${rec.includes(k) ? '⭐' : '📋'}</i><span class="grow"><b>${e.nombre}</b><small>${e.max ? e.items.length + ' preguntas' : 'Entrevista guiada · ' + e.items.length + ' preguntas'}</small></span><span class="sub">›</span></button>`).join('')}
+    <button onclick="formExterna()"><i>📎</i><span class="grow"><b>Registrar prueba externa</b><small>BDI-II, BAI, STAI, WISC, MMPI… (puntaje e interpretación)</small></span><span class="sub">›</span></button></div>
+  <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
+}
+function itemOps(e, it){ return typeof it === 'object' ? it.o : (e.opciones || OPC).map((l, v) => [l, v]); }
 function formEscala(tipo){
   const e = ESCALAS[tipo];
-  abrirModal(`<h3>${e.nombre}</h3><p class="mini" style="margin-top:0">Durante las <b>últimas 2 semanas</b>, ¿con qué frecuencia le han molestado los siguientes problemas? Instrumento de tamizaje, no reemplaza el juicio clínico.</p>
-  ${e.items.map((it, i) => `<div class="item"><p><b>${i + 1}.</b> ${esc(it)}</p><div class="opc">${OPC.map((o, v) => `<label><input type="radio" name="it${i}" value="${v}" onchange="sumaEscala('${tipo}')"><span>${v}<br>${o}</span></label>`).join('')}</div></div>`).join('')}
+  abrirModal(`<h3>${e.nombre}</h3><p class="mini" style="margin-top:0">${e.periodo} ${e.max ? 'Instrumento de tamizaje, no reemplaza el juicio clínico.' : ''}</p>
+  ${e.items.map((it, i) => `<div class="item"><p><b>${i + 1}.</b> ${esc(typeof it === 'object' ? it.t : it)}</p><div class="opc">${itemOps(e, it).map(([o, v]) => `<label><input type="radio" name="it${i}" value="${v}" onchange="sumaEscala('${tipo}')"><span>${e.max ? v + '<br>' : ''}${esc(o)}</span></label>`).join('')}</div></div>`).join('')}
+  ${tipo === 'RIESGO' ? `<label>Factores protectores y de riesgo observados</label><textarea id="es-obs" maxlength="2000" placeholder="Ej: red de apoyo familiar, hijos, desesperanza, consumo, pérdida reciente…"></textarea>` : ''}
   <div class="aviso info" id="es-total" style="margin-top:12px">Responde todas las preguntas.</div>
+  ${e.fuente ? `<p class="mini">${esc(e.fuente)}</p>` : ''}
   <button class="btn full" id="es-btn" onclick="guardarEscala('${tipo}')">Guardar resultado cifrado</button>
   <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
 }
 function respuestas(tipo){ return ESCALAS[tipo].items.map((_, i) => { const r = document.querySelector(`input[name=it${i}]:checked`); return r ? +r.value : null; }); }
+function evaluarEscala(tipo, r){ const e = ESCALAS[tipo], t = r.reduce((a, b) => a + b, 0); return { t, n: e.evaluar ? e.evaluar(r) : e.nivel(t), alerta: e.alerta ? e.alerta(r) : '' }; }
 function sumaEscala(tipo){
   const r = respuestas(tipo), e = ESCALAS[tipo];
   if (r.includes(null)) { $('es-total').textContent = `Llevas ${r.filter(x => x !== null).length} de ${e.items.length} respuestas.`; return; }
-  const t = r.reduce((a, b) => a + b, 0), n = e.nivel(t);
-  $('es-total').innerHTML = `Puntaje: <b>${t} / ${e.max}</b> · <span class="badge ${n[1]}">${n[0]}</span>` + (tipo === 'PHQ-9' && r[8] > 0 ? `<div class="aviso err" style="margin:10px 0 0">⚠️ Ítem 9 positivo: realiza una valoración de riesgo suicida en esta sesión.</div>` : '');
+  const x = evaluarEscala(tipo, r);
+  $('es-total').innerHTML = (e.max ? `Puntaje: <b>${x.t} / ${e.max}</b> · ` : 'Resultado: ') + `<span class="badge ${x.n[1]}">${esc(x.n[0])}</span>` + (x.alerta ? `<div class="aviso err" style="margin:10px 0 0">⚠️ ${esc(x.alerta)}</div>` : '');
 }
 async function guardarEscala(tipo){
   const r = respuestas(tipo);
   if (r.includes(null)) { toast('Responde todas las preguntas', true); return; }
-  const t = r.reduce((a, b) => a + b, 0);
+  const x = evaluarEscala(tipo, r);
   $('es-btn').disabled = true;
-  const fila = Object.assign({ paciente_id: P.actual.id, tipo, fecha: hoyYMD() }, await cifrar({ respuestas: r, total: t, nivel: ESCALAS[tipo].nivel(t)[0] }));
+  const d = { respuestas: r, total: x.t, nivel: x.n[0], clase: x.n[1] };
+  if ($('es-obs')) d.obs = $('es-obs').value.trim();
+  const fila = Object.assign({ paciente_id: P.actual.id, tipo, fecha: hoyYMD() }, await cifrar(d));
   const { error } = await sb.from('escalas').insert(fila);
-  if (error) { $('es-btn').disabled = false; toast(mensajeError(error), true); return; }
+  if (error) { $('es-btn').disabled = false; toast(/check|violates/i.test(error.message || '') ? 'Falta ejecutar la actualización v7 de la base de datos' : mensajeError(error), true); return; }
   cerrarModal(); toast('Resultado guardado 🔒'); P.tab = 'escalas'; abrirFicha(P.actual.id);
+  if (tipo === 'PHQ-9' && r[8] > 0) setTimeout(() => toast('Ítem 9 positivo: aplica la Valoración de riesgo suicida', true), 1200);
 }
+function formExterna(){
+  abrirModal(`<h3>📎 Registrar prueba externa</h3><p class="mini">Para pruebas con licencia que aplicas en físico o en la plataforma del editor. Se guarda cifrada y sale en la historia clínica.</p>
+  <label>Prueba</label><select id="ex-n" onchange="$('ex-otra').style.display=this.value==='Otra'?'':'none'">${EXTERNAS.map(x => `<option>${esc(x)}</option>`).join('')}</select>
+  <input id="ex-otra" maxlength="80" placeholder="Nombre de la prueba" style="display:none;margin-top:6px">
+  <div class="fila"><div><label>Fecha</label><input id="ex-f" type="date" value="${hoyYMD()}"></div><div><label>Puntaje</label><input id="ex-p" maxlength="40" placeholder="Ej: 24 · PD 52"></div></div>
+  <label>Interpretación / nivel</label><input id="ex-i" maxlength="200" placeholder="Ej: Depresión moderada">
+  <label>Observaciones</label><textarea id="ex-o" maxlength="2000"></textarea>
+  <button class="btn full" id="ex-btn" onclick="guardarExterna()">Guardar cifrado</button><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function guardarExterna(){
+  const n = $('ex-n').value === 'Otra' ? $('ex-otra').value.trim() : $('ex-n').value;
+  const d = { nombre: n, puntaje: $('ex-p').value.trim(), nivel: $('ex-i').value.trim(), obs: $('ex-o').value.trim() };
+  if (!n || !d.puntaje && !d.nivel) { toast('Escribe la prueba y su resultado', true); return; }
+  $('ex-btn').disabled = true;
+  const fila = Object.assign({ paciente_id: P.actual.id, tipo: 'EXT', fecha: $('ex-f').value || hoyYMD() }, await cifrar(d));
+  const { error } = await sb.from('escalas').insert(fila);
+  if (error) { $('ex-btn').disabled = false; toast(/check|violates/i.test(error.message || '') ? 'Falta ejecutar la actualización v7 de la base de datos' : mensajeError(error), true); return; }
+  cerrarModal(); toast('Prueba registrada 🔒'); P.tab = 'escalas'; abrirFicha(P.actual.id);
+}
+function nivelGuardado(tipo, d){ const e = ESCALAS[tipo]; return d.clase ? [d.nivel, d.clase] : e.evaluar ? e.evaluar(d.respuestas) : e.nivel(d.total); }
 function tabEscalas(){
-  const c = $('ficha-c');
-  if (!P.escalas.length) { c.innerHTML = `<div class="empty">Sin escalas aplicadas. Usa los botones PHQ-9 o GAD-7 para medir y ver la evolución del paciente.</div>`; return; }
-  c.innerHTML = Object.keys(ESCALAS).map(tipo => {
+  const c = $('ficha-c'), sug = sugerirPruebas();
+  let h = `<div class="card"><div class="row"><b class="grow">📊 Pruebas</b><button class="btn sm" onclick="elegirPrueba()">+ Aplicar prueba</button></div>
+    ${sug.length ? `<p class="mini" style="margin-top:6px">✨ Según la historia (${sug.map(m => m[0]).join(', ')}) se recomiendan: <b>${[...new Set(sug.flatMap(m => m[2]))].map(k => ESCALAS[k].corto).join(', ')}</b></p>` : `<p class="mini" style="margin-top:6px">Elige la prueba según el motivo de consulta.</p>`}</div>`;
+  if (!P.escalas.length) { c.innerHTML = h + `<div class="empty">Sin pruebas aplicadas.</div>`; return; }
+  h += Object.keys(ESCALAS).map(tipo => {
     const l = P.escalas.filter(x => x.tipo === tipo && x.d); if (!l.length) return '';
     const e = ESCALAS[tipo], ult = l[l.length - 1], pri = l[0], dif = ult.d.total - pri.d.total;
     return `<div class="card"><h3>${e.nombre}</h3>
-    <div class="sub" style="margin-bottom:10px">Última: <b>${ult.d.total}/${e.max}</b> · ${esc(ult.d.nivel)}${l.length > 1 ? ` · ${dif < 0 ? '📉 bajó ' + (-dif) : dif > 0 ? '📈 subió ' + dif : '➖ igual'} desde la primera` : ''}</div>
-    ${l.map(x => { const n = e.nivel(x.d.total); return `<div style="margin-bottom:8px"><div class="row" style="font-size:13px;margin-bottom:3px"><span class="grow">${esc(fecha(x.fecha + 'T12:00:00Z',{day:'numeric',month:'short',year:'numeric'}))}</span><b>${x.d.total}</b>&nbsp;<span class="badge ${n[1]}">${n[0]}</span></div>
-      <div class="barra"><div style="width:${Math.round(x.d.total / e.max * 100)}%;background:${n[1]==='b-ok'?'#10b981':n[1]==='b-conf'?'#3b82f6':n[1]==='b-pend'?'#f59e0b':'#ef4444'}"></div></div>
-      ${tipo === 'PHQ-9' && x.d.respuestas[8] > 0 ? `<div class="sub" style="color:var(--bad)">⚠️ Ítem 9 positivo (${x.d.respuestas[8]})</div>` : ''}</div>`; }).join('')}</div>`;
+    <div class="sub" style="margin-bottom:10px">Última: ${e.max ? `<b>${ult.d.total}/${e.max}</b> · ` : ''}${esc(ult.d.nivel)}${l.length > 1 && e.max ? ` · ${dif < 0 ? '📉 bajó ' + (-dif) : dif > 0 ? '📈 subió ' + dif : '➖ igual'} desde la primera` : ''}</div>
+    ${l.map(x => { const n = nivelGuardado(tipo, x.d); return `<div style="margin-bottom:8px"><div class="row" style="font-size:13px;margin-bottom:3px;flex-wrap:wrap;gap:4px 8px"><span class="grow" style="white-space:nowrap">${esc(fecha(x.fecha + 'T12:00:00Z',{day:'numeric',month:'short',year:'numeric'}))}${e.max ? ` · <b>${x.d.total}</b>` : ''}</span><span class="badge ${n[1]}">${esc(n[0])}</span></div>
+      ${e.max ? `<div class="barra"><div style="width:${Math.round(x.d.total / e.max * 100)}%;background:${n[1]==='b-ok'?'#10b981':n[1]==='b-conf'?'#3b82f6':n[1]==='b-pend'?'#f59e0b':'#ef4444'}"></div></div>` : ''}
+      ${tipo === 'PHQ-9' && x.d.respuestas[8] > 0 ? `<div class="sub" style="color:var(--bad)">⚠️ Ítem 9 positivo (${x.d.respuestas[8]})</div>` : ''}${x.d.obs ? `<div class="sub">${esc(x.d.obs)}</div>` : ''}</div>`; }).join('')}</div>`;
   }).join('');
+  const ex = P.escalas.filter(x => x.tipo === 'EXT' && x.d);
+  if (ex.length) h += `<div class="card"><h3>📎 Pruebas externas</h3>${ex.map(x => `<div class="franja"><span class="grow"><b>${esc(x.d.nombre)}</b> · ${esc(fecha(x.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short', year: 'numeric' }))}<br><small>${esc([x.d.puntaje, x.d.nivel].filter(Boolean).join(' · '))}${x.d.obs ? ' — ' + esc(x.d.obs) : ''}</small></span></div>`).join('')}</div>`;
+  c.innerHTML = h;
 }
 
 /* --- CITAS DEL PACIENTE --- */
@@ -1487,7 +1581,7 @@ function exportarHistoria(){
   const hcN = historiaActual(), ev = P.notas.filter(n => !esHC(n));
   const notas = [...ev].reverse().map(n => !n.d ? '' : `<div class="n"><h3>${esc(n.fecha)} · ${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')} · ${esc((RIESGO[n.d.riesgo] || RIESGO.ninguno)[0])}</h3>
     ${camposDeNota(n.d).map(f => `<b>${esc(f[0])}:</b><p>${esc(f[1])}</p>`).join('')}${n.d.acciones_riesgo ? `<b>Acciones frente al riesgo:</b><p>${esc(n.d.acciones_riesgo)}</p>` : ''}</div>`).join('');
-  const esc_ = P.escalas.filter(x => x.d).map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.tipo)}</td><td>${x.d.total}</td><td>${esc(x.d.nivel)}</td></tr>`).join('');
+  const esc_ = P.escalas.filter(x => x.d).map(x => `<tr><td>${esc(x.fecha)}</td><td>${esc(x.tipo === 'EXT' ? x.d.nombre + ' (externa)' : (ESCALAS[x.tipo] || {}).nombre || x.tipo)}</td><td>${esc(x.tipo === 'EXT' ? x.d.puntaje || '—' : (ESCALAS[x.tipo] || {}).max ? x.d.total : '—')}</td><td>${esc(x.d.nivel)}${x.d.obs ? ' · ' + esc(x.d.obs) : ''}</td></tr>`).join('');
   w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Historia clínica - ${esc(p.nombres)}</title>
   <style>body{font-family:Arial,sans-serif;font-size:12px;color:#111;margin:28px}h1{font-size:18px;margin:0}h2{font-size:14px;border-bottom:2px solid #0e7490;padding-bottom:4px;margin-top:22px}h3{font-size:12px;margin:0 0 6px;color:#0e7490}
   .n{border:1px solid #ccc;border-radius:6px;padding:10px;margin-bottom:10px;page-break-inside:avoid}p{margin:2px 0 8px;white-space:pre-wrap}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:5px;text-align:left}
