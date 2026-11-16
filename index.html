@@ -87,6 +87,7 @@ a.dircard{display:block;color:inherit;text-decoration:none}
 .wrap.pub{max-width:920px}
 .pub-barra{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-radius:14px;padding:8px 10px;margin:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:13px;line-height:1.3}
 .pub-barra small{color:var(--sub)}
+.color-chip.on{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--txt)}
 .hc-sec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 12px 10px;margin-top:10px}
 .hc-sec summary{cursor:pointer;font-weight:800;color:var(--pri);padding:8px 0;font-size:14px}
 .guia{font-size:14px;line-height:1.6}.guia ul,.guia ol{padding-left:20px;margin:6px 0}.guia li{margin-bottom:5px}.guia p{margin:6px 0}
@@ -200,7 +201,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.5.2';
+const VERSION = '3.6';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -300,7 +301,7 @@ async function paginaPublica(){
     app.innerHTML = `<header><h1>Consulta LV</h1></header><div class="wrap"><div class="empty">Esta página de reservas no está disponible.<br>Verifica el enlace con tu profesional.</div></div>`;
     return;
   }
-  R.perfil = data; R.fecha = hoyYMD(); R.mes = R.fecha.slice(0, 7);
+  R.perfil = data; R.fecha = hoyYMD(); R.mes = R.fecha.slice(0, 7); aplicarColor(data.color);
   pintarPublica();
 }
 
@@ -537,6 +538,7 @@ function pantallaAcceso(modo){
     ${modo==='entrar' ? `<button class="btn full ghost" onclick="recuperar()">Olvidé mi contraseña</button>` : ''}
   </div>
   <a class="btn full ghost" href="${esc(urlPublica('?dir=1'))}" style="margin-bottom:10px">🔎 ¿Buscas psicólogo? Ver directorio</a>
+  <a class="btn full ghost" href="ventas.html" style="margin-bottom:10px">✨ ¿Qué es Consulta LV? Planes y beneficios</a>
   <div class="pie">🔒 Conexión cifrada · Cada profesional ve solo a sus pacientes<br>Consulta LV v${VERSION} · LV Studio</div></div>`;
 }
 
@@ -545,7 +547,7 @@ async function ingresar(){
   const { error } = await sb.auth.signInWithPassword({ email: $('a-email').value.trim(), password: $('a-pass').value });
   b.disabled = false;
   if (error) { toast(mensajeError(error), true); return; }
-  abrirPanel();
+  entrarConMFA();
 }
 async function crearCuenta(){
   const email = $('a-email').value.trim(), pass = $('a-pass').value;
@@ -575,7 +577,7 @@ async function guardarNuevaClave(){
   if (p.length < 10 || !/[0-9]/.test(p) || !/[a-zA-Z]/.test(p)) { toast('Mínimo 10 caracteres, con letras y números', true); return; }
   const { error } = await sb.auth.updateUser({ password: p });
   if (error) { toast(mensajeError(error), true); return; }
-  toast('Contraseña actualizada ✅'); abrirPanel();
+  toast('Contraseña actualizada ✅'); entrarConMFA();
 }
 async function salir(msg){ C.dk = null; await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
 
@@ -591,6 +593,7 @@ async function abrirPanel(){
   S.prof = data; reiniciarInactividad();
   S.vista = 'inicio';
   pintarPanel();
+  if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 600);
 }
 
 function diasRestantes(){ const d = Math.round((new Date(S.prof.activo_hasta + 'T23:59:59') - new Date()) / 86400000); return d; }
@@ -619,7 +622,7 @@ function irA(v, sinHistoria){
   if ($('vista')) $('vista').classList.remove('ancha');
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (GRUPO[v] || v)));
   ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, finanzas: vistaFinanzas, mas: vistaMas, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil,
-     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia })[v]();
+     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia, seguridad: vistaSeguridad, legal: vistaLegal })[v]();
   window.scrollTo(0, 0); actualizarAtras();
 }
 
@@ -674,6 +677,7 @@ async function vistaInicio(){
     <div class="kpi"><b>${esc(peso(ingresos))}</b><span>Cobrado este mes</span></div>
     <div class="kpi" onclick="irA('pacientes')"><b>${nPac}</b><span>Pacientes</span></div></div>`;
   const nHab = hb.error ? 0 : hb.count ?? (hb.data || []).length, nEsp = le.error ? 0 : le.count ?? (le.data || []).length;
+  if ('contrato_encargado_at' in p && !p.contrato_encargado_at) h += `<div class="aviso warn" style="cursor:pointer" onclick="irA('legal')">📄 Revisa y acepta el <b>contrato de tratamiento de datos</b> con LV Studio (Ley 1581). Toca aquí.</div>`;
   if (nHab) h += `<div class="aviso err" style="cursor:pointer" onclick="irA('habeas')">🛡️ Tienes <b>${nHab}</b> solicitud${nHab > 1 ? 'es' : ''} de datos sin responder. La ley da 10 a 15 días hábiles. Toca para verla${nHab > 1 ? 's' : ''}.</div>`;
   if (nEsp) h += `<div class="aviso info" style="cursor:pointer" onclick="irA('espera')">⏳ <b>${nEsp}</b> persona${nEsp > 1 ? 's' : ''} en lista de espera. Toca para verla${nEsp > 1 ? 's' : ''}.</div>`;
   if (porCobrar) h += `<div class="aviso warn" style="cursor:pointer" onclick="irA('finanzas')">💵 Tienes <b>${esc(peso(porCobrar))}</b> por cobrar de sesiones atendidas este mes.</div>`;
@@ -984,6 +988,10 @@ function vistaPerfil(){
   <div class="fila"><div><label>Ciudad</label><input id="p-ciudad" maxlength="60" value="${esc(p.ciudad)}"></div>
   <div><label>WhatsApp</label><input id="p-wa" maxlength="15" inputmode="tel" value="${esc(p.whatsapp)}"></div></div></div>
 
+  <div class="card"><h3>🎨 Color de tu página de reservas</h3>
+    <div id="p-color-prev" style="height:46px;border-radius:12px;margin-bottom:10px;background:linear-gradient(135deg,${esc(colorValido(p.color_marca) ? p.color_marca : '#0e7490')},${esc(oscurecer(colorValido(p.color_marca) ? p.color_marca : '#0e7490', .35))})"></div>
+    <div class="chips">${COLORES.map(c => `<div class="chip color-chip ${(p.color_marca || '#0e7490') === c ? 'on' : ''}" data-c="${c}" onclick="elegirColor('${c}')" style="min-width:42px;height:42px;padding:0;background:${c}"></div>`).join('')}</div>
+    <input type="hidden" id="p-color" value="${esc(p.color_marca || '#0e7490')}"></div>
   <div class="card"><h3>Lo que verán tus pacientes</h3>
   <label>Enfoque terapéutico</label><input id="p-enfoque" maxlength="120" list="enfoques" value="${esc(p.enfoque)}" placeholder="Ej: Cognitivo conductual">
   <datalist id="enfoques"><option>Cognitivo conductual</option><option>Terapia de aceptación y compromiso (ACT)</option><option>Sistémico</option><option>Psicodinámico</option><option>Humanista</option><option>Gestalt</option><option>Integrativo</option><option>Terapia dialéctica conductual (DBT)</option><option>EMDR</option></datalist>
@@ -1018,7 +1026,7 @@ async function guardarPerfil(){
     idiomas: $('p-idiomas').value.trim(), poblacion: $('p-pob').value.trim(), especialidades: $('p-esp').value.trim(),
     formacion: $('p-form').value.trim(),
     direccion: $('p-dir').value.trim(), nequi: soloDigitos($('p-nequi').value),
-    datos_pago: $('p-dpago').value.trim(), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
+    datos_pago: $('p-dpago').value.trim(), ...('color_marca' in S.prof ? { color_marca: $('p-color').value } : {}), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
     slug: $('p-slug').value.trim().replace(/^-+|-+$/g, '') };
   if (d.nombre.length < 3) { toast('Escribe tu nombre completo', true); return; }
   if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
@@ -1617,7 +1625,7 @@ function exportarHistoria(){
 /* =========================================================
    v3 · MÁS, FINANZAS, ESPERA, RESEÑAS, PLANTILLAS, ADJUNTOS, HABEAS
    ========================================================= */
-const GRUPO = { guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
+const GRUPO = { seguridad: 'mas', legal: 'mas', guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
 function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = azar(16); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128; const h = [...b].map(x => x.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
 function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
 function urlPublica(q){ return location.origin + location.pathname + q; }
@@ -1931,6 +1939,150 @@ function imprimirFormato(t){
   w.document.close();
 }
 
+/* =========================================================
+   v8 · VERIFICACIÓN EN DOS PASOS, EXPORTACIÓN, CONTRATO, BIENVENIDA, COLOR
+   ========================================================= */
+async function necesitaMFA(){
+  try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return !!data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2'; }
+  catch (e) { return false; }
+}
+async function entrarConMFA(){ if (await necesitaMFA()) pantallaMFA(); else abrirPanel(); }
+function pantallaMFA(){
+  app.innerHTML = `<header><small>Verificación en dos pasos</small><h1>Consulta LV</h1></header><div class="wrap"><div class="card" style="text-align:center">
+  <div style="font-size:44px">🔐</div><h3>Escribe el código de tu app autenticadora</h3>
+  <p class="mini">Abre Google Authenticator o Microsoft Authenticator y escribe el código de 6 dígitos de "Consulta LV".</p>
+  <input id="mfa-c" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="text-align:center;font-size:28px;letter-spacing:8px" oninput="if(this.value.replace(/\D/g,'').length===6)verificarMFA()">
+  <button class="btn full" id="mfa-btn" onclick="verificarMFA()">Verificar</button>
+  <button class="btn full ghost" onclick="salir()">Salir</button></div></div>`;
+  setTimeout(() => { const i = $('mfa-c'); if (i) i.focus(); }, 100);
+}
+async function verificarMFA(){
+  const code = ($('mfa-c').value || '').replace(/\D/g, ''); if (code.length !== 6) { toast('Escribe los 6 dígitos', true); return; }
+  const b = $('mfa-btn'); if (b.disabled) return; b.disabled = true;
+  const { data } = await sb.auth.mfa.listFactors(); const f = ((data && data.totp) || []).find(x => x.status === 'verified');
+  if (!f) { b.disabled = false; abrirPanel(); return; }
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: f.id, code });
+  if (error) { b.disabled = false; $('mfa-c').value = ''; toast('Código incorrecto o vencido. Intenta con el código nuevo', true); return; }
+  abrirPanel();
+}
+async function vistaSeguridad(){
+  const v = $('vista');
+  v.innerHTML = `<h2>🔐 Seguridad de tu cuenta</h2><div id="seg-c"><div class="carga">Cargando…</div></div>`;
+  const { data } = await sb.auth.mfa.listFactors(); const box = $('seg-c'); if (!box) return;
+  const ver = ((data && data.totp) || []).find(x => x.status === 'verified');
+  box.innerHTML = `<div class="card"><div class="row"><h3 class="grow" style="margin:0">Verificación en dos pasos</h3><span class="badge ${ver ? 'b-ok' : 'b-pend'}">${ver ? 'Activa' : 'Inactiva'}</span></div>
+    <p style="font-size:14px;line-height:1.5;margin:8px 0">${ver ? 'Cada vez que entres te pediremos un código de tu celular. Aunque alguien conozca tu contraseña, no podrá ver a tus pacientes: el servidor también lo exige.' : 'Protege tu cuenta con un código que cambia cada 30 segundos en tu celular. <b>Muy recomendado</b>: manejas historias clínicas.'}</p>
+    ${ver ? `<button class="btn sm red" onclick="desactivarMFA('${ver.id}')">Desactivar</button>` : `<button class="btn full" onclick="activarMFA()">Activar verificación en dos pasos</button>`}</div>
+    <div class="card"><h3>Otras protecciones activas</h3><div style="font-size:14px;line-height:1.9">✅ Historias, pruebas y archivos cifrados en tu dispositivo<br>✅ Cierre automático de sesión tras 15 minutos sin uso<br>✅ Registro de cada apertura de ficha y exportación<br>✅ Cada profesional solo ve a sus pacientes (reglas del servidor)</div></div>`;
+}
+async function activarMFA(){
+  const { data: l } = await sb.auth.mfa.listFactors();
+  for (const f of ((l && l.all) || (l && l.totp) || []).filter(x => x.status !== 'verified')) await sb.auth.mfa.unenroll({ factorId: f.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Consulta LV' });
+  if (error || !data) { toast(mensajeError(error), true); return; }
+  const qr = String(data.totp.qr_code || ''), qrOk = /^data:image\/svg\+xml/.test(qr);
+  abrirModal(`<h3>🔐 Activar verificación en dos pasos</h3>
+  <p class="mini"><b>1.</b> Instala en tu celular <b>Google Authenticator</b> o <b>Microsoft Authenticator</b> (gratis).</p>
+  <p class="mini"><b>2.</b> En la app toca "+" y escanea este código. Si estás en el mismo celular, copia la clave.</p>
+  ${qrOk ? `<div style="text-align:center"><img src="${esc(qr)}" alt="Código QR" style="width:200px;height:200px;background:#fff;border-radius:12px;padding:6px"></div>` : ''}
+  <div class="link-box" style="text-align:center;letter-spacing:2px">${esc(data.totp.secret)}</div><button class="btn sm ghost" onclick="copiar('${esc(data.totp.secret)}')">Copiar clave</button>
+  <p class="mini" style="margin-top:10px"><b>3.</b> Escribe el código de 6 dígitos que aparece:</p>
+  <input id="mfa-n" inputmode="numeric" maxlength="6" style="text-align:center;font-size:24px;letter-spacing:6px">
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="mfa-nb" onclick="confirmarMFA('${data.id}')">Activar</button></div></div>`);
+}
+async function confirmarMFA(id){
+  const code = ($('mfa-n').value || '').replace(/\D/g, ''); if (code.length !== 6) { toast('Escribe los 6 dígitos', true); return; }
+  $('mfa-nb').disabled = true;
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: id, code });
+  if (error) { $('mfa-nb').disabled = false; toast('Código incorrecto. Revisa la hora de tu celular e intenta con el código nuevo', true); return; }
+  cerrarModal(); toast('Verificación en dos pasos activada 🔐'); vistaSeguridad();
+}
+async function desactivarMFA(id){
+  if (!confirm('¿Desactivar la verificación en dos pasos? Tu cuenta quedará menos protegida.')) return;
+  const { error } = await sb.auth.mfa.unenroll({ factorId: id });
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Desactivada'); vistaSeguridad();
+}
+
+/* --- EXPORTAR TODOS LOS DATOS --- */
+async function exportarTodo(){
+  if (!C.dk) { toast('Primero desbloquea tus historias en Pacientes', true); irA('pacientes'); return; }
+  if (!confirm('Se descargará un archivo con TODOS tus datos y las historias clínicas sin cifrar. Guárdalo en un lugar seguro y no lo compartas. ¿Continuar?')) return;
+  toast('Preparando tu respaldo…');
+  const t = ['pacientes', 'citas', 'notas_clinicas', 'escalas', 'adjuntos', 'servicios', 'disponibilidad', 'bloqueos', 'gastos', 'plantillas', 'lista_espera', 'resenas', 'solicitudes_habeas'];
+  const rs = await Promise.all(t.map(x => sb.from(x).select('*')));
+  const err = rs.find(r => r.error); if (err) { toast(mensajeError(err.error), true); return; }
+  const out = { generado: new Date().toISOString(), app: 'Consulta LV v' + VERSION, profesional: Object.assign({}, S.prof) };
+  for (let i = 0; i < t.length; i++) {
+    let filas = rs[i].data || [];
+    if (t[i] === 'notas_clinicas' || t[i] === 'escalas') filas = await Promise.all(filas.map(async f => { const c = Object.assign({}, f, { contenido: await descifrar(f.contenido_cifrado, f.iv) }); delete c.contenido_cifrado; delete c.iv; return c; }));
+    if (t[i] === 'adjuntos') filas = await Promise.all(filas.map(async f => ({ id: f.id, paciente_id: f.paciente_id, ruta: f.ruta, created_at: f.created_at, archivo: await descifrar(f.meta_cifrada, f.iv_meta) })));
+    out[t[i]] = filas;
+  }
+  out.nota = 'Los archivos adjuntos se descargan uno por uno desde la ficha del paciente. Este respaldo contiene información clínica reservada (Ley 1090 de 2006, Ley 1581 de 2012).';
+  sb.rpc('registrar_acceso', { p_tabla: 'exportacion_total', p_id: S.prof.id });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }));
+  a.download = `consulta-lv-respaldo-${hoyYMD()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  toast('Respaldo descargado ✅');
+}
+
+/* --- CONTRATO DE ENCARGADO DEL TRATAMIENTO --- */
+function textoContrato(){
+  const p = S.prof;
+  return `<h3>Contrato de transmisión de datos personales</h3>
+  <p class="mini">Ley 1581 de 2012 y Decreto 1377 de 2013 (compilado en el Decreto 1074 de 2015).</p>
+  <p><b>Partes.</b> <b>${esc(p.nombre || 'El profesional')}</b>${p.tarjeta_profesional ? ', T.P. ' + esc(p.tarjeta_profesional) : ''}, como <b>Responsable</b> del tratamiento de los datos de sus pacientes, y <b>LV Studio</b> (Luis Adolfo Vanegas Lasso), proveedor de Consulta LV, como <b>Encargado</b>.</p>
+  <p><b>1. Objeto.</b> El Encargado presta la plataforma tecnológica para agendar citas, gestionar la página de reservas y almacenar la historia clínica, y trata los datos solo para esas finalidades y según las instrucciones del Responsable.</p>
+  <p><b>2. Obligaciones del Encargado.</b> a) No usar los datos para fines propios ni comercializarlos. b) Mantener medidas de seguridad: cifrado de extremo a extremo de notas, historia, pruebas y archivos (el Encargado no puede leerlos), conexión cifrada, control de acceso por profesional, verificación en dos pasos y registro de auditoría. c) Guardar confidencialidad, aun después de terminado el contrato. d) Informar al Responsable, sin demora, cualquier incidente de seguridad, y apoyarlo en el reporte a la Superintendencia de Industria y Comercio. e) Apoyar al Responsable para atender las consultas y reclamos de los titulares.</p>
+  <p><b>3. Subencargados.</b> El Responsable autoriza el uso de: Supabase (base de datos y archivos, Estados Unidos) y Brevo (envío de recordatorios por correo, Unión Europea), países con nivel adecuado de protección según la SIC. El Encargado avisará cualquier cambio de subencargado.</p>
+  <p><b>4. Obligaciones del Responsable.</b> a) Obtener la autorización de tratamiento de datos y el consentimiento informado de sus pacientes. b) Atender las solicitudes de habeas data dentro de los plazos legales. c) Custodiar su clave clínica y su código de recuperación: sin ellos la información cifrada no se puede recuperar. d) Conservar la historia clínica por el tiempo que exige la ley (Resolución 839 de 2017).</p>
+  <p><b>5. Terminación.</b> Al terminar el servicio, el Responsable puede exportar todos sus datos. El Encargado conservará la información solo mientras lo exija la ley y luego la suprimirá.</p>
+  <p><b>6. Vigencia.</b> Mientras el Responsable use Consulta LV.</p>
+  <p class="mini">Plantilla de referencia. LV Studio recomienda revisarla con un asesor jurídico.</p>`;
+}
+function vistaLegal(){
+  const p = S.prof, ok = p.contrato_encargado_at;
+  $('vista').innerHTML = `<h2>📄 Contrato y datos</h2>
+  <div class="card guia">${textoContrato()}
+  ${ok ? `<div class="aviso ok">✅ Aceptado el ${esc(fecha(ok, { dateStyle: 'long', timeStyle: 'short' }))}</div>` : `<button class="btn full" onclick="aceptarContrato()">Acepto el contrato</button>`}</div>
+  <div class="card"><h3>💾 Exportar todos mis datos</h3><p class="mini">Descarga un respaldo completo (pacientes, citas, historias, pruebas, finanzas). Sirve para tener tu copia o para llevarte la información si dejas Consulta LV.</p>
+  <button class="btn full ghost" onclick="exportarTodo()">Descargar respaldo</button></div>`;
+}
+async function aceptarContrato(){
+  const { data, error } = await sb.from('profesionales').update({ contrato_encargado_at: new Date().toISOString() }).eq('id', S.prof.id).select().single();
+  if (error) { toast(/column|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v8 de la base de datos' : mensajeError(error), true); return; }
+  S.prof = data; toast('Contrato aceptado ✅'); vistaLegal();
+}
+
+/* --- BIENVENIDA INICIAL --- */
+const BIENV = [
+  ['👋', 'Bienvenido(a) a Consulta LV', 'Tu consultorio en el bolsillo: agenda, página de reservas, historias clínicas, pruebas y finanzas en un solo lugar.'],
+  ['🔒', 'Tus historias son solo tuyas', 'Las notas, la historia clínica, las pruebas y los archivos se cifran en tu dispositivo con tu clave clínica. Ni nosotros podemos leerlos. Guarda muy bien tu código de recuperación.'],
+  ['🚀', 'Empieza en 3 pasos', '1. Completa tu perfil y sube tu foto.<br>2. Revisa tu servicio y tu horario (ya viene uno automático).<br>3. Comparte tu enlace de reservas por WhatsApp o Instagram.']];
+function mostrarBienvenida(i){
+  i = i || 0; const b = BIENV[i];
+  abrirModal(`<div style="text-align:center;padding:10px 6px"><div style="font-size:56px">${b[0]}</div><h3 style="font-size:20px;margin:8px 0">${b[1]}</h3>
+  <p style="font-size:15px;line-height:1.6">${b[2]}</p>
+  <div style="display:flex;gap:6px;justify-content:center;margin:14px 0">${BIENV.map((_, k) => `<i style="width:${k === i ? 22 : 8}px;height:8px;border-radius:4px;background:${k === i ? 'var(--pri)' : '#cbd5e1'};display:block"></i>`).join('')}</div>
+  <div class="fila"><button class="btn full ghost" onclick="terminarBienvenida()">${i < BIENV.length - 1 ? 'Saltar' : 'Cerrar'}</button>
+  <button class="btn full" onclick="${i < BIENV.length - 1 ? `mostrarBienvenida(${i + 1})` : "terminarBienvenida();irA('perfil')"}">${i < BIENV.length - 1 ? 'Siguiente' : 'Completar mi perfil'}</button></div></div>`);
+}
+async function terminarBienvenida(){
+  cerrarModal(); try { localStorage.setItem('clv_bienv_' + S.prof.id, '1'); } catch (e) {}
+  if ('bienvenida_vista' in S.prof) { const { data } = await sb.from('profesionales').update({ bienvenida_vista: true }).eq('id', S.prof.id).select().single(); if (data) S.prof = data; }
+}
+function debeVerBienvenida(){
+  let local = false; try { local = localStorage.getItem('clv_bienv_' + S.prof.id) === '1'; } catch (e) {}
+  return !local && S.prof.bienvenida_vista === false;
+}
+
+/* --- COLOR DE MARCA --- */
+const COLORES = ['#0e7490', '#2563eb', '#4f46e5', '#7c3aed', '#be185d', '#dc2626', '#ea580c', '#059669', '#0f766e', '#334155'];
+function colorValido(c){ return /^#[0-9a-fA-F]{6}$/.test(c || ''); }
+function oscurecer(hex, f){ const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.round(v * (1 - f))); return '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''); }
+function aplicarColor(c){ if (!colorValido(c)) return; document.documentElement.style.setProperty('--pri', c); document.documentElement.style.setProperty('--pri2', oscurecer(c, .35)); }
+function elegirColor(c){ $('p-color').value = c; document.querySelectorAll('.color-chip').forEach(x => x.classList.toggle('on', x.dataset.c === c)); $('p-color-prev').style.background = `linear-gradient(135deg,${c},${oscurecer(c, .35)})`; }
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -1964,7 +2116,9 @@ function vistaMas(){
     ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
     ['guia','📘','Guía de consulta y formatos','Documentos a pedir, paso a paso y formatos para firmar'],
     ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
-    ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)']];
+    ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)'],
+    ['seguridad','🔐','Seguridad de la cuenta','Verificación en dos pasos'],
+    ['legal','📄','Contrato y exportar mis datos','Contrato de encargado · respaldo completo']];
   $('vista').innerHTML = `<h2>Más opciones</h2><div class="menu-mas">${items.map(x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`).join('')}</div>
   <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte buscando por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
   <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>`;
@@ -2400,7 +2554,7 @@ function htmlResenasPublicas(p){
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') pantallaNuevaClave(); });
   if (/type=recovery/.test(location.hash)) return;
   const { data: { session } } = await sb.auth.getSession();
-  if (session) abrirPanel(); else pantallaAcceso('entrar');
+  if (session) entrarConMFA(); else pantallaAcceso('entrar');
 })();
 </script>
 </body>
