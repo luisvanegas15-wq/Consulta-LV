@@ -210,7 +210,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.7.1';
+const VERSION = '3.8';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -503,7 +503,9 @@ async function confirmarReserva(){
     <p style="font-size:14px;line-height:1.5">Tu cita quedó <b>pendiente de confirmación</b>. ${esc(p.nombre)} te contactará para confirmarla${R.serv.precio ? ' y coordinar el pago' : ''}.</p>
     <p style="font-size:14px;font-weight:700;margin-top:12px">Guárdala en tu calendario para que tu celular te avise 1 día y 1 hora antes:</p>
     ${botonesCalendario('Cita con ' + p.nombre, R.hora, new Date(new Date(R.hora).getTime() + R.serv.duracion * 60000).toISOString(), R.serv.nombre + (p.whatsapp ? ' · WhatsApp del profesional: ' + p.whatsapp : ''), R.serv.modalidad === 'presencial' ? p.direccion : '')}
-    ${v('r-email') ? `<p class="mini">📧 También te enviaremos un recordatorio a ${esc(v('r-email'))} el día anterior.</p>` : ''}
+    ${/^https:\/\//.test(data.enlace || '') ? `<div class="aviso info">🎥 Tu cita es virtual. Este es tu enlace de videollamada (también llega a tu correo): <a href="${esc(data.enlace)}" target="_blank" rel="noopener">${esc(data.enlace)}</a></div>` : ''}
+    ${data.token ? `<a class="btn full ghost" href="${esc(urlPublica('?c=' + data.token))}">🔄 Ver, cambiar o cancelar mi cita</a>` : ''}
+    ${v('r-email') ? `<p class="mini">📧 Te enviamos la confirmación a ${esc(v('r-email'))} y un recordatorio el día anterior.</p>` : ''}
     ${R.serv.precio ? htmlPagoPublico(p).replace('class="card"', 'style="margin:12px 0"') : ''}
     ${p.whatsapp ? `<a class="btn full" href="https://wa.me/${waNum(p.whatsapp)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Avisar por WhatsApp</a>` : ''}
     <a class="btn full ghost" href="${esc(urlPublica('?p=' + SLUG))}">Listo · volver al perfil</a>
@@ -590,7 +592,7 @@ async function guardarNuevaClave(){
   if (error) { toast(mensajeError(error), true); return; }
   toast('Contraseña actualizada ✅'); entrarConMFA();
 }
-async function salir(msg){ C.dk = null; await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
+async function salir(msg){ C.dk = null; C.priv = null; await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
 
 /* --- cierre por inactividad --- */
 let tInact;
@@ -653,7 +655,7 @@ async function vistaInicio(){
     <p class="bienv-f">“${esc(FRASES[dia % FRASES.length])}”</p></div>
   <div id="ini-c"><div class="carga" style="padding:30px">Preparando tu resumen…</div></div>`;
   const [ci, sv, di, pa, ll, le, hb] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,recordatorio_at,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+    sb.from('citas').select('*,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', mesIni + 'T00:00:00-05:00').lt('inicio', sumarDias(hoy, 8) + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('servicios').select('id').eq('activo', true),
     sb.from('disponibilidad').select('id'),
@@ -704,6 +706,7 @@ async function vistaInicio(){
       ${pp.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(prox))}">💬 Recordar</a>` : ''}
       <button class="btn sm ghost" onclick="abrirFicha('${prox.paciente_id}')">🗂️ Ficha</button></div></div>`;
   }
+  h += htmlManana(activas);
   h += `<h2>Tu día</h2>`;
   h += deHoy.length ? deHoy.map(c => { const e = ESTADOS[c.estado] || ['', 'b-gris'];
     return `<div class="card tap" style="cursor:pointer;margin-bottom:8px" onclick="detalleCita('${c.id}')"><div class="row"><div style="font-weight:800;color:var(--pri);min-width:72px">${esc(hora(c.inicio))}</div>
@@ -744,7 +747,7 @@ async function cargarAgenda(){
   const dias = diasVista(), g0 = lunes(A.mes + '-01'), g1 = sumarDias(g0, 42);
   const desde = [dias[0], g0].sort()[0], hasta = [sumarDias(dias[dias.length - 1], 1), g1].sort()[1];
   const [c, d, b] = await Promise.all([
-    sb.from('citas').select('id,paciente_id,inicio,fin,estado,origen,valor,pagado,metodo_pago,serie,recordatorio_at,enlace_virtual,pacientes(nombres,telefono,documento),servicios(nombre)')
+    sb.from('citas').select('*,pacientes(nombres,telefono,documento),servicios(nombre)')
       .gte('inicio', desde + 'T00:00:00-05:00').lt('inicio', hasta + 'T00:00:00-05:00').order('inicio', { ascending: true }),
     sb.from('disponibilidad').select('dia,hora_inicio,hora_fin'),
     sb.from('bloqueos').select('*').lt('inicio', hasta + 'T00:00:00-05:00').gte('fin', desde + 'T00:00:00-05:00')]);
@@ -882,6 +885,8 @@ function detalleCita(id){
     ${c.recordatorio_at ? `📧 Recordatorio enviado: ${esc(fecha(c.recordatorio_at, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))}<br>` : ''}
     ${pa.telefono ? `📱 ${esc(pa.telefono)}<br>` : ''}
     ${c.origen === 'online' ? '🌐 Reservada en línea por el paciente' : '✍️ Agendada por ti'}
+    ${c.confirmada_paciente_at ? `<br>✅ El paciente confirmó su asistencia (${esc(fecha(c.confirmada_paciente_at, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))})` : ''}
+    ${c.cambio_paciente ? `<br>🔄 ${esc(c.cambio_paciente)}` : ''}
   </div>
   <div class="acciones">
     ${c.estado === 'pendiente' ? `<button class="btn sm" onclick="estadoCita('${c.id}','confirmada')">✓ Confirmar</button>` : ''}
@@ -899,7 +904,7 @@ function detalleCita(id){
 }
 function enlaceRecordatorio(c){
   const pa = c.pacientes || {}, p = S.prof;
-  const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}¿Me confirmas tu asistencia? ${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
+  const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}${c.token_paciente ? 'Confirma, cancela o cambia la hora aquí: ' + urlPublica('?c=' + c.token_paciente) + ' . ' : '¿Me confirmas tu asistencia? '}${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
   return 'https://wa.me/' + waNum(pa.telefono) + '?text=' + encodeURIComponent(t);
 }
 async function estadoCita(id, estado){
@@ -1225,7 +1230,7 @@ async function vistaPacientes(){
   v.innerHTML = `<h2>Pacientes <button class="btn sm" onclick="formPaciente()">+ Nuevo</button></h2>
   <input id="pac-buscar" placeholder="🔎 Buscar por nombre o documento" value="${esc(P.filtro)}" oninput="P.filtro=this.value;pintarListaPac()">
   <div id="pac-lista" style="margin-top:12px"><div class="carga" style="padding:20px">Cargando…</div></div>
-  <p class="mini">🔒 Historias cifradas en tu dispositivo · <a href="#" onclick="C.dk=null;vistaPacientes();return false">Bloquear ahora</a></p>`;
+  <p class="mini">🔒 Historias cifradas en tu dispositivo · <a href="#" onclick="C.dk=null;C.priv=null;vistaPacientes();return false">Bloquear ahora</a></p>`;
   const { data, error } = await sb.from('pacientes').select('id,nombres,documento,telefono,fecha_nacimiento,created_at').order('nombres');
   if (error) { $('pac-lista').innerHTML = `<div class="aviso err">${esc(mensajeError(error))}</div>`; return; }
   P.lista = data || []; pintarListaPac();
@@ -1288,6 +1293,7 @@ async function abrirFicha(id, sinHistoria){
   P.actual = pa.data; P.citas = ci.data || [];
   P.notas = await Promise.all((no.data || []).map(async n => Object.assign({ id: n.id, fecha: n.fecha, cita_id: n.cita_id, d: await descifrar(n.contenido_cifrado, n.iv) })));
   P.escalas = await Promise.all((es.data || []).map(async n => ({ id: n.id, tipo: n.tipo, fecha: n.fecha, d: await descifrar(n.contenido_cifrado, n.iv) })));
+  await cargarFormularios(id);
   pintarFicha();
 }
 function pintarFicha(){
@@ -1298,10 +1304,11 @@ function pintarFicha(){
     <div class="foto" style="width:56px;height:56px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--pri);border:0;box-shadow:none">${esc(p.nombres.trim().charAt(0).toUpperCase())}</div>
     <div class="grow"><h3 style="margin:0">${esc(p.nombres)}</h3><div class="sub">CC ${esc(p.documento)}${p.fecha_nacimiento ? ' · ' + edad(p.fecha_nacimiento) : ''}</div>
     ${ult ? `<div class="sub">📅 Próxima: ${esc(fecha(ult.inicio,{weekday:'short',day:'numeric',month:'short'}))} ${esc(hora(ult.inicio))}</div>` : ''}</div></div>
-    ${!p.consentimiento_at ? `<div class="aviso warn" style="margin-top:10px">Falta registrar el consentimiento informado de este paciente.</div>` : ''}
+    ${!p.consentimiento_at ? `<div class="aviso warn" style="margin-top:10px">Falta registrar el consentimiento informado de este paciente. <a href="#" onclick="event.preventDefault();crearFormulario('consentimiento','')">Enviárselo para firmar en línea</a></div>` : ''}
     <div class="acciones">
       ${historiaActual() ? `<button class="btn sm" onclick="formNota()">📝 Nota de evolución</button>` : `<button class="btn sm" onclick="formHistoria()">📋 Crear historia clínica</button>`}
       <button class="btn sm ghost" onclick="elegirPrueba()">📊 Aplicar prueba</button>
+      <button class="btn sm ghost" onclick="elegirEnvioPaciente()">📲 Enviar al paciente</button>
       <button class="btn sm ghost" onclick="formCita({pacId:P.actual.id,nombre:P.actual.nombres,volver:'ficha'})">📅 Agendar</button>
       ${p.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.telefono)}">💬</a>` : ''}
       <button class="btn sm ghost" onclick="exportarHistoria()">📄 Historia clínica</button>
@@ -1511,7 +1518,7 @@ async function guardarExterna(){
 function nivelGuardado(tipo, d){ const e = ESCALAS[tipo]; return d.clase ? [d.nivel, d.clase] : e.evaluar ? e.evaluar(d.respuestas) : e.nivel(d.total); }
 function tabEscalas(){
   const c = $('ficha-c'), sug = sugerirPruebas();
-  let h = `<div class="card"><div class="row"><b class="grow">📊 Pruebas</b><button class="btn sm" onclick="elegirPrueba()">+ Aplicar prueba</button></div>
+  let h = htmlPendientes('prueba') + `<div class="card"><div class="row"><b class="grow">📊 Pruebas</b><button class="btn sm ghost" onclick="elegirEnvioPaciente()">📲 Enviar</button><button class="btn sm" onclick="elegirPrueba()">+ Aplicar prueba</button></div>
     ${sug.length ? `<p class="mini" style="margin-top:6px">✨ Según la historia (${sug.map(m => m[0]).join(', ')}) se recomiendan: <b>${[...new Set(sug.flatMap(m => m[2]))].map(k => ESCALAS[k].corto).join(', ')}</b></p>` : `<p class="mini" style="margin-top:6px">Elige la prueba según el motivo de consulta.</p>`}</div>`;
   if (!P.escalas.length) { c.innerHTML = h + `<div class="empty">Sin pruebas aplicadas.</div>`; return; }
   h += Object.keys(ESCALAS).map(tipo => {
@@ -1602,7 +1609,9 @@ function tabDatos(){
   <b>Consentimiento informado:</b> ${p.consentimiento_at ? esc(fecha(p.consentimiento_at,{dateStyle:'medium',timeStyle:'short'})) : 'sin registrar'}<br>
   <b>Registrado:</b> ${esc(fecha(p.created_at,{dateStyle:'medium'}))}
   <button class="btn full ghost" onclick='formPaciente(P.actual)'>Editar datos</button>
-  <p class="mini">La historia clínica se conserva mínimo 15 años desde la última atención (Res. 839 de 2017) y no puede eliminarse desde la app.</p></div>`;
+  <p class="mini">La historia clínica se conserva mínimo 15 años desde la última atención (Res. 839 de 2017) y no puede eliminarse desde la app.</p></div>
+  ${htmlPendientes('consentimiento')}<div id="docs-f"></div>`;
+  verDocumentos();
 }
 
 /* --- EXPORTAR PDF --- */
@@ -1958,7 +1967,12 @@ async function necesitaMFA(){
   try { const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); return !!data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2'; }
   catch (e) { return false; }
 }
-async function entrarConMFA(){ if (await necesitaMFA()) pantallaMFA(); else abrirPanel(); }
+async function entrarConMFA(){
+  if (await necesitaMFA()) { pantallaMFA(); return; }
+  const e = await estado2FA();
+  if (e && e.metodo === 'correo' && !e.ok) { pantallaCodigoCorreo(e.correo); return; }
+  abrirPanel();
+}
 function pantallaMFA(){
   app.innerHTML = `<header><small>Verificación en dos pasos</small><h1>Consulta LV</h1></header><div class="wrap"><div class="card" style="text-align:center">
   <div style="font-size:44px">🔐</div><h3>Escribe el código de tu app autenticadora</h3>
@@ -1980,12 +1994,17 @@ async function verificarMFA(){
 async function vistaSeguridad(){
   const v = $('vista');
   v.innerHTML = `<h2>🔐 Seguridad de tu cuenta</h2><div id="seg-c"><div class="carga">Cargando…</div></div>`;
-  const { data } = await sb.auth.mfa.listFactors(); const box = $('seg-c'); if (!box) return;
-  const ver = ((data && data.totp) || []).find(x => x.status === 'verified');
-  box.innerHTML = `<div class="card"><div class="row"><h3 class="grow" style="margin:0">Verificación en dos pasos</h3><span class="badge ${ver ? 'b-ok' : 'b-pend'}">${ver ? 'Activa' : 'Inactiva'}</span></div>
-    <p style="font-size:14px;line-height:1.5;margin:8px 0">${ver ? 'Cada vez que entres te pediremos un código de tu celular. Aunque alguien conozca tu contraseña, no podrá ver a tus pacientes: el servidor también lo exige.' : 'Protege tu cuenta con un código que cambia cada 30 segundos en tu celular. <b>Muy recomendado</b>: manejas historias clínicas.'}</p>
-    ${ver ? `<button class="btn sm red" onclick="desactivarMFA('${ver.id}')">Desactivar</button>` : `<button class="btn full" onclick="activarMFA()">Activar verificación en dos pasos</button>`}</div>
-    <div class="card"><h3>Otras protecciones activas</h3><div style="font-size:14px;line-height:1.9">✅ Historias, pruebas y archivos cifrados en tu dispositivo<br>✅ Cierre automático de sesión tras 15 minutos sin uso<br>✅ Registro de cada apertura de ficha y exportación<br>✅ Cada profesional solo ve a sus pacientes (reglas del servidor)</div></div>`;
+  const [{ data }, est] = await Promise.all([sb.auth.mfa.listFactors(), estado2FA()]); const box = $('seg-c'); if (!box) return;
+  const ver = ((data && data.totp) || []).find(x => x.status === 'verified'), correo = !!(est && est.metodo === 'correo'), nada = !ver && !correo;
+  box.innerHTML = `${nada ? `<div class="aviso warn">Tu cuenta solo está protegida con contraseña. Manejas historias clínicas: <b>activa la verificación en dos pasos</b>.</div>` : ''}
+  <div class="card"><div class="row"><h3 class="grow" style="margin:0">📧 Código al correo</h3><span class="badge ${correo ? 'b-ok' : 'b-gris'}">${correo ? 'Activa' : 'Inactiva'}</span></div>
+    <p style="font-size:14px;line-height:1.5;margin:8px 0">${correo ? `Cada vez que entres te enviamos un código a <b>${esc(est.correo)}</b>. Sin ese código el servidor no muestra a tus pacientes.` : '<b>Recomendado.</b> Cada vez que entres te llega un código de 6 dígitos a tu correo. No necesitas instalar ninguna app.'}</p>
+    ${correo ? `<button class="btn sm red" onclick="desactivarCorreo2FA()">Desactivar</button>` : ver ? '<p class="mini">Ya usas la app autenticadora, que es aún más segura.</p>' : `<button class="btn full" onclick="activarCorreo2FA()">Activar código al correo</button>`}</div>
+  <div class="card"><div class="row"><h3 class="grow" style="margin:0">📱 App autenticadora</h3><span class="badge ${ver ? 'b-ok' : 'b-gris'}">${ver ? 'Activa' : 'Inactiva'}</span></div>
+    <p style="font-size:14px;line-height:1.5;margin:8px 0">${ver ? 'Cada vez que entres te pedimos el código de Google o Microsoft Authenticator. El servidor también lo exige.' : 'La opción más segura: un código que cambia cada 30 segundos en Google o Microsoft Authenticator. Funciona aunque alguien entre a tu correo.'}</p>
+    ${ver ? `<button class="btn sm red" onclick="desactivarMFA('${ver.id}')">Desactivar</button>` : `<button class="btn full ${correo ? 'ghost' : 'ghost'}" onclick="activarMFA()">Usar app autenticadora</button>`}</div>
+  <div class="card"><h3>Otras protecciones activas</h3><div style="font-size:14px;line-height:1.9">✅ Historias, pruebas, firmas y archivos cifrados en tu dispositivo<br>✅ Cierre automático de sesión tras 15 minutos sin uso<br>✅ Registro de cada apertura de ficha y exportación<br>✅ Cada profesional solo ve a sus pacientes (reglas del servidor)</div>
+  <p class="mini">El código por mensaje de texto (SMS) no está disponible porque cada mensaje tiene costo. El correo cumple la misma función gratis.</p></div>`;
 }
 async function activarMFA(){
   const { data: l } = await sb.auth.mfa.listFactors();
@@ -2196,6 +2215,335 @@ async function extenderProf(id, d){
   const { data, error } = await sb.rpc('admin_extender', { p_prof: id, p_dias: d });
   if (error) { toast(mensajeError(error), true); return; }
   toast('Activo hasta ' + data + ' ✅'); vistaAdmin();
+}
+
+/* =========================================================
+   v10 · CÓDIGO AL CORREO, FORMULARIOS DEL PACIENTE, GESTIÓN DE CITA
+   ========================================================= */
+/* --- VERIFICACIÓN EN DOS PASOS POR CORREO --- */
+async function estado2FA(){ try { const { data, error } = await sb.rpc('estado_2fa'); return error ? null : data; } catch (e) { return null; } }
+function pantallaCodigoCorreo(correo){
+  app.innerHTML = `<header><small>Verificación en dos pasos</small><h1>Consulta LV</h1></header><div class="wrap"><div class="card" style="text-align:center">
+  <div style="font-size:44px">📧</div><h3>Revisa tu correo</h3>
+  <p class="mini" id="cc-t">Te estamos enviando un código de 6 dígitos a <b>${esc(correo || 'tu correo')}</b>…</p>
+  <input id="cc-c" inputmode="numeric" autocomplete="one-time-code" maxlength="6" style="text-align:center;font-size:28px;letter-spacing:8px" oninput="if(this.value.replace(/\\D/g,'').length===6)verificarCodigoCorreo()">
+  <button class="btn full" id="cc-btn" onclick="verificarCodigoCorreo()">Verificar</button>
+  <button class="btn full ghost" id="cc-re" onclick="pedirCodigoCorreo()" disabled>Reenviar código</button>
+  <button class="btn full ghost" onclick="salir()">Salir</button>
+  <p class="mini">¿No llega? Revisa la carpeta de spam o promociones. El código vence en 10 minutos.</p></div></div>`;
+  pedirCodigoCorreo(true);
+}
+let CC_T = null;
+async function pedirCodigoCorreo(primero){
+  const re = $('cc-re'); if (re) re.disabled = true;
+  const { data, error } = await sb.rpc('enviar_codigo_2fa');
+  const t = $('cc-t');
+  if (error) { if (t) t.innerHTML = /Espera/i.test(error.message || '') ? 'Ya te enviamos un código hace un momento. Revisa tu correo.' : esc(mensajeError(error)); }
+  else if (t) t.innerHTML = `Te enviamos un código de 6 dígitos a <b>${esc(data || 'tu correo')}</b>.`;
+  if (!primero && !error) toast('Código enviado 📧');
+  let s = 45; clearInterval(CC_T);
+  CC_T = setInterval(() => { const b = $('cc-re'); if (!b) { clearInterval(CC_T); return; } s--; b.textContent = s > 0 ? `Reenviar código (${s})` : 'Reenviar código'; if (s <= 0) { b.disabled = false; clearInterval(CC_T); } }, 1000);
+  setTimeout(() => { const i = $('cc-c'); if (i) i.focus(); }, 100);
+}
+async function verificarCodigoCorreo(){
+  const code = ($('cc-c').value || '').replace(/\D/g, ''); if (code.length !== 6) { toast('Escribe los 6 dígitos', true); return; }
+  const b = $('cc-btn'); if (b.disabled) return; b.disabled = true;
+  const { data, error } = await sb.rpc('verificar_codigo_2fa', { p_codigo: code });
+  if (error || !data) { b.disabled = false; $('cc-c').value = ''; toast(error ? mensajeError(error) : 'Código incorrecto. Revisa e intenta de nuevo', true); return; }
+  clearInterval(CC_T); abrirPanel();
+}
+async function activarCorreo2FA(){
+  const { data, error } = await sb.rpc('enviar_codigo_2fa');
+  if (error) { toast(/function|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v10 de la base de datos' : mensajeError(error), true); return; }
+  abrirModal(`<h3>📧 Activar código al correo</h3>
+  <p style="font-size:15px;line-height:1.6">Te enviamos un código de 6 dígitos a <b>${esc(data)}</b>. Escríbelo aquí para activar la verificación.</p>
+  <input id="cm-c" inputmode="numeric" maxlength="6" style="text-align:center;font-size:26px;letter-spacing:6px">
+  <p class="mini">Desde ahora, cada vez que entres a Consulta LV te llegará un código nuevo a tu correo. Revisa spam si no lo ves.</p>
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="cm-b" onclick="confirmarCorreo2FA()">Activar</button></div></div>`);
+}
+async function confirmarCorreo2FA(){
+  const code = ($('cm-c').value || '').replace(/\D/g, ''); if (code.length !== 6) { toast('Escribe los 6 dígitos', true); return; }
+  $('cm-b').disabled = true;
+  const { data, error } = await sb.rpc('activar_2fa_correo', { p_codigo: code });
+  if (error || !data) { $('cm-b').disabled = false; toast(error ? mensajeError(error) : 'Código incorrecto', true); return; }
+  cerrarModal(); toast('Verificación por correo activada 🔐'); vistaSeguridad();
+}
+async function desactivarCorreo2FA(){
+  if (!confirm('¿Desactivar el código al correo? Tu cuenta quedará menos protegida.')) return;
+  const { error } = await sb.rpc('desactivar_2fa_correo');
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Desactivada'); vistaSeguridad();
+}
+
+/* --- LLAVES PARA QUE EL PACIENTE ENVÍE RESPUESTAS CIFRADAS --- */
+const ECDH = { name: 'ECDH', namedCurve: 'P-256' };
+async function llavePrivada(){
+  if (C.priv) return C.priv;
+  if (!C.dk) return null;
+  const p = S.prof;
+  if (p.clave_publica && p.clave_privada_cifrada) {
+    const d = await descifrar(p.clave_privada_cifrada, p.clave_privada_iv); if (!d || !d.pk) return null;
+    C.priv = await crypto.subtle.importKey('pkcs8', unb64(d.pk), ECDH, false, ['deriveKey']);
+    return C.priv;
+  }
+  const kp = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+  const pub = await crypto.subtle.exportKey('jwk', kp.publicKey), pk = b64(await crypto.subtle.exportKey('pkcs8', kp.privateKey));
+  const x = await cifrar({ pk });
+  const { data, error } = await sb.from('profesionales').update({ clave_publica: { kty: pub.kty, crv: pub.crv, x: pub.x, y: pub.y }, clave_privada_cifrada: x.contenido_cifrado, clave_privada_iv: x.iv }).eq('id', p.id).select().single();
+  if (error) { toast(/column|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v10 de la base de datos' : mensajeError(error), true); return null; }
+  S.prof = data; C.priv = kp.privateKey; return C.priv;
+}
+async function cifrarParaProfesional(jwk, obj){
+  const pub = await crypto.subtle.importKey('jwk', Object.assign({ ext: true }, jwk), ECDH, false, []);
+  const eph = await crypto.subtle.generateKey(ECDH, true, ['deriveKey']);
+  const k = await crypto.subtle.deriveKey({ name: 'ECDH', public: pub }, eph.privateKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = azar(12), ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, TE.encode(JSON.stringify(obj)));
+  const e = await crypto.subtle.exportKey('jwk', eph.publicKey);
+  return { p_cifrado: b64(ct), p_epk: { kty: e.kty, crv: e.crv, x: e.x, y: e.y }, p_iv: b64(iv) };
+}
+async function descifrarDelPaciente(f){
+  const priv = await llavePrivada(); if (!priv) return null;
+  try {
+    const epk = await crypto.subtle.importKey('jwk', Object.assign({ ext: true }, f.epk), ECDH, false, []);
+    const k = await crypto.subtle.deriveKey({ name: 'ECDH', public: epk }, priv, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    return JSON.parse(TD.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(f.iv) }, k, unb64(f.respuesta_cifrada))));
+  } catch (e) { return null; }
+}
+
+/* --- ENVIAR AL PACIENTE (profesional) --- */
+const PRUEBAS_PACIENTE = ['PHQ-9', 'GAD-7', 'PCL-5', 'AUDIT'];
+function elegirEnvioPaciente(){
+  abrirModal(`<h3>📲 Enviar al paciente para llenar en línea</h3>
+  <p class="mini" style="margin-top:0">${esc(P.actual.nombres)} lo responde desde su celular. Llega cifrado: solo tú puedes abrirlo, y se guarda solo en su ficha.</p>
+  <div class="menu-mas">
+    <button onclick="crearFormulario('consentimiento','')"><i>✍️</i><span class="grow"><b>Consentimiento informado para firmar</b><small>Lo lee, escribe su nombre y firma con el dedo</small></span><span class="sub">›</span></button>
+    ${PRUEBAS_PACIENTE.map(k => `<button onclick="crearFormulario('prueba','${k}')"><i>📊</i><span class="grow"><b>${esc(ESCALAS[k].corto || k)}</b><small>${esc(ESCALAS[k].nombre)}</small></span><span class="sub">›</span></button>`).join('')}
+  </div><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function crearFormulario(tipo, prueba){
+  if (!(await llavePrivada())) { toast('Primero desbloquea tus historias', true); return; }
+  const { data, error } = await sb.from('formularios').insert({ paciente_id: P.actual.id, tipo, prueba }).select('id,token').single();
+  if (error) { toast(/formularios|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v10 de la base de datos' : mensajeError(error), true); return; }
+  compartirFormulario(data.id, data.token, tipo, prueba);
+}
+function compartirFormulario(id, token, tipo, prueba){
+  const pa = P.actual, url = urlPublica('?f=' + token), que = tipo === 'prueba' ? 'un cuestionario corto (' + prueba + ')' : 'el consentimiento informado para firmar';
+  const msg = `Hola ${pa.nombres.split(' ')[0]}, te envío ${que}. Lo puedes hacer desde tu celular aquí: ${url} . Tus respuestas viajan cifradas y solo yo puedo verlas. — ${S.prof.nombre}`;
+  abrirModal(`<h3>✅ Enlace listo</h3><p class="mini" style="margin-top:0">Envíaselo a ${esc(pa.nombres)}. Vence en 14 días y se usa una sola vez.</p>
+  <div class="link-box">${esc(url)}</div>
+  <div class="acciones">${pa.telefono ? `<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(msg)}">💬 WhatsApp</a>` : ''}
+  ${pa.email ? `<button class="btn sm ghost" onclick="correoFormulario('${id}','${esc(url)}')">📧 Enviar por correo</button>` : ''}
+  <button class="btn sm ghost" onclick="copiar('${esc(url)}')">Copiar</button></div>
+  <p class="mini">Cuando lo responda te llega un correo, y al abrir su ficha la respuesta se guarda sola.</p>
+  <button class="btn full ghost" onclick="cerrarModal();P.tab='${tipo === 'prueba' ? 'escalas' : 'datos'}';abrirFicha(P.actual.id)">Listo</button>`);
+}
+async function correoFormulario(id, url){
+  const { data, error } = await sb.rpc('enviar_formulario_correo', { p_id: id, p_url: url });
+  toast(error || !data ? 'No se pudo enviar el correo' : 'Correo enviado 📧', !!(error || !data));
+}
+async function cargarFormularios(id){
+  const { data, error } = await sb.from('formularios').select('*').eq('paciente_id', id).neq('estado', 'importado').order('created_at', { ascending: false });
+  if (error) { P.formularios = []; return; }
+  P.formularios = data || [];
+  const resp = P.formularios.filter(f => f.estado === 'respondido');
+  if (!resp.length) return;
+  let n = 0, alerta = false;
+  for (const f of resp) {
+    const d = await descifrarDelPaciente(f); if (!d) continue;
+    let ok = false;
+    if (f.tipo === 'prueba' && ESCALAS[f.prueba] && Array.isArray(d.respuestas) && d.respuestas.length === ESCALAS[f.prueba].items.length) {
+      const x = evaluarEscala(f.prueba, d.respuestas);
+      const fila = Object.assign({ paciente_id: id, tipo: f.prueba, fecha: (f.respondido_at || '').slice(0, 10) || hoyYMD() },
+        await cifrar({ respuestas: d.respuestas, total: x.t, nivel: x.n[0], clase: x.n[1], origen: 'paciente', obs: 'Respondida por el paciente en línea el ' + fecha(f.respondido_at, { dateStyle: 'medium', timeStyle: 'short' }) }));
+      ok = !(await sb.from('escalas').insert(fila)).error;
+      if (ok && f.prueba === 'PHQ-9' && d.respuestas[8] > 0) alerta = true;
+    } else if (f.tipo === 'consentimiento' && d.firma) {
+      ok = !(await sb.from('documentos').insert(Object.assign({ paciente_id: id, tipo: 'consentimiento' }, await cifrar(Object.assign({}, d, { respondido_at: f.respondido_at }))))).error;
+      if (ok && !P.actual.consentimiento_at) { const u = await sb.from('pacientes').update({ consentimiento_at: f.respondido_at }).eq('id', id).select().single(); if (u.data) P.actual = u.data; }
+    }
+    if (ok) { await sb.from('formularios').update({ estado: 'importado', respuesta_cifrada: null, epk: null, iv: null }).eq('id', f.id); n++; }
+  }
+  if (n) {
+    P.formularios = P.formularios.filter(f => f.estado !== 'respondido');
+    const es = await sb.from('escalas').select('*').eq('paciente_id', id).order('fecha', { ascending: true }).order('created_at', { ascending: true });
+    P.escalas = await Promise.all((es.data || []).map(async x => ({ id: x.id, tipo: x.tipo, fecha: x.fecha, d: await descifrar(x.contenido_cifrado, x.iv) })));
+    toast(`📩 Se guardaron ${n} respuesta(s) del paciente en su ficha`);
+    if (alerta) setTimeout(() => toast('⚠️ PHQ-9 respondido con ítem 9 positivo: aplica la Valoración de riesgo suicida', true), 1500);
+  }
+}
+function htmlPendientes(tipo){
+  const l = (P.formularios || []).filter(f => f.estado === 'enviado' && f.tipo === tipo);
+  if (!l.length) return '';
+  return `<div class="aviso info" style="font-size:13px">📲 Enviado al paciente, sin responder: ${l.map(f => `<b>${esc(f.tipo === 'prueba' ? f.prueba : 'consentimiento')}</b> (${new Date(f.expira) < new Date() ? 'vencido' : 'vence ' + esc(fecha(f.expira, { day: 'numeric', month: 'short' }))}) <a href="#" onclick="event.preventDefault();compartirFormulario('${f.id}','${f.token}','${f.tipo}','${esc(f.prueba)}')">reenviar</a> · <a href="#" onclick="event.preventDefault();borrarFormulario('${f.id}')">quitar</a>`).join('<br>')}</div>`;
+}
+async function borrarFormulario(id){
+  if (!confirm('¿Quitar este envío? El enlace dejará de funcionar.')) return;
+  await sb.from('formularios').delete().eq('id', id); abrirFicha(P.actual.id);
+}
+async function verDocumentos(){
+  const box = $('docs-f'); if (!box) return;
+  const { data, error } = await sb.from('documentos').select('*').eq('paciente_id', P.actual.id).order('created_at', { ascending: false });
+  if (error) { box.innerHTML = ''; return; }
+  P.docs = await Promise.all((data || []).map(async x => ({ id: x.id, created_at: x.created_at, d: await descifrar(x.contenido_cifrado, x.iv) })));
+  box.innerHTML = P.docs.length ? `<div class="card"><h3>✍️ Documentos firmados</h3>${P.docs.map((x, i) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><span class="grow">Consentimiento informado<br><small class="sub">Firmado por ${esc((x.d || {}).nombre || '—')} · ${esc(fecha((x.d || {}).respondido_at || x.created_at, { dateStyle: 'medium', timeStyle: 'short' }))}</small></span><button class="btn sm ghost" onclick="imprimirDocumento(${i})">Ver</button></div>`).join('')}</div>` : '';
+}
+function imprimirDocumento(i){
+  const x = P.docs[i], d = x.d || {}; const w = window.open('', '_blank'); if (!w) { toast('Permite las ventanas emergentes', true); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Consentimiento firmado</title><style>body{font-family:Arial,sans-serif;max-width:720px;margin:30px auto;padding:0 20px;color:#0f172a;line-height:1.55;font-size:14px}h3{margin-top:22px}.f{border-top:1px solid #333;margin-top:30px;padding-top:8px}img{max-width:320px;border-bottom:1px solid #333}</style></head><body>
+  ${d.texto || ''}<div class="f"><img src="${/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(d.firma || '') ? d.firma : ''}" alt="Firma"><br><b>${esc(d.nombre || '')}</b> · Documento ${esc(d.documento || '')}<br>
+  Firmado electrónicamente el ${esc(fecha(d.respondido_at || x.created_at, { dateStyle: 'long', timeStyle: 'short' }))} desde el enlace personal enviado por ${esc(S.prof.nombre)}.<br><small>Dispositivo: ${esc((d.dispositivo || '').slice(0, 160))}</small></div>
+  <script>setTimeout(()=>print(),400)<\/script></body></html>`); w.document.close();
+}
+
+/* --- PÁGINA PÚBLICA: FORMULARIO DEL PACIENTE --- */
+const FTOKEN = /^[0-9a-f-]{36}$/i.test(new URLSearchParams(location.search).get('f') || '') ? new URLSearchParams(location.search).get('f') : '';
+const FP = { info: null, trazos: 0 };
+function cabeceraPub(t, sub){ return `<header style="padding-bottom:26px"><small>${esc(sub || 'Consulta LV')}</small><h1>${esc(t)}</h1></header>`; }
+async function paginaFormulario(){
+  app.innerHTML = cabeceraPub('Cargando…') + '<div class="wrap"><div class="carga">Un momento…</div></div>';
+  const { data } = await sb.rpc('formulario_info', { p_token: FTOKEN });
+  if (!data) { app.innerHTML = cabeceraPub('Enlace no válido') + `<div class="wrap"><div class="empty">Este enlace no existe. Pídele uno nuevo a tu profesional.</div></div>`; return; }
+  FP.info = data; aplicarColor(data.color);
+  if (data.estado !== 'enviado') { graciasFormulario(true); return; }
+  if (data.vencido) { app.innerHTML = cabeceraPub('Enlace vencido') + `<div class="wrap"><div class="empty">Este enlace venció. Pídele uno nuevo a ${esc(data.profesional)}.</div></div>`; return; }
+  if (!data.clave || !window.crypto || !crypto.subtle) { app.innerHTML = cabeceraPub('No disponible') + `<div class="wrap"><div class="empty">Tu navegador no permite enviar respuestas cifradas. Ábrelo en Chrome o Safari actualizado.</div></div>`; return; }
+  const top = `<div class="card"><div class="row">${fotoSegura(data.foto) ? `<img class="foto" src="${esc(data.foto)}" alt="" style="width:52px;height:52px">` : '<div style="font-size:34px">🧠</div>'}<div class="grow"><b>${esc(data.profesional)}</b><div class="sub">${esc(data.titulo || '')}${data.tarjeta ? ' · T.P. ' + esc(data.tarjeta) : ''}</div></div></div>
+    <p style="font-size:14px;line-height:1.55;margin:10px 0 0">Hola <b>${esc(data.paciente)}</b>. 🔒 Tus respuestas se cifran en tu celular antes de enviarse: solo tu profesional puede leerlas.</p></div>`;
+  if (data.tipo === 'prueba') {
+    const e = ESCALAS[data.prueba];
+    app.innerHTML = cabeceraPub(e.corto || data.prueba, 'Cuestionario') + `<div class="wrap" style="padding-bottom:40px">${top}
+    <div class="card"><h3 style="margin-top:0">${esc(e.nombre)}</h3><p class="mini">${e.periodo} Responde con sinceridad: no hay respuestas buenas ni malas.</p>
+    ${e.items.map((it, i) => `<div class="item"><p><b>${i + 1}.</b> ${esc(typeof it === 'object' ? it.t : it)}</p><div class="opc">${itemOps(e, it).map(([o, v]) => `<label><input type="radio" name="it${i}" value="${v}" onchange="progresoForm()"><span>${esc(o)}</span></label>`).join('')}</div></div>`).join('')}
+    <div class="aviso info" id="fp-prog">Llevas 0 de ${e.items.length} respuestas.</div>
+    <button class="btn full" id="fp-btn" onclick="enviarPruebaPaciente()">Enviar respuestas</button></div>
+    <div class="pie">Si estás pasando por un momento difícil, llama a la <b>Línea 106</b> o al <b>123</b>.<br>Consulta LV · LV Studio</div></div>`;
+  } else {
+    const txt = textoConsentimiento(data.profesional);
+    app.innerHTML = cabeceraPub('Consentimiento informado', 'Firma en línea') + `<div class="wrap" style="padding-bottom:40px">${top}
+    <div class="card guia" id="fp-txt">${txt}</div>
+    <div class="card"><label>Nombre completo</label><input id="fp-n" maxlength="120" autocomplete="name">
+    <label>Número de documento</label><input id="fp-d" maxlength="20" inputmode="numeric">
+    <label class="check"><input type="checkbox" id="fp-ok"><span>He leído el consentimiento informado, resolví mis dudas y acepto recibir atención psicológica.</span></label>
+    <label>Firma con tu dedo aquí</label><canvas id="fp-c" style="width:100%;height:170px;background:#fff;border:2px dashed #94a3b8;border-radius:12px;touch-action:none;display:block"></canvas>
+    <button class="btn sm ghost" style="margin-top:6px" onclick="limpiarFirma()">Borrar firma</button>
+    <button class="btn full" id="fp-btn" style="margin-top:12px" onclick="enviarConsentimiento()">Firmar y enviar</button></div>
+    <div class="pie">Consulta LV · LV Studio</div></div>`;
+    iniciarFirma();
+  }
+}
+function progresoForm(){ const e = ESCALAS[FP.info.prueba], r = e.items.map((_, i) => document.querySelector(`input[name=it${i}]:checked`)); $('fp-prog').textContent = `Llevas ${r.filter(Boolean).length} de ${e.items.length} respuestas.`; }
+async function enviarPruebaPaciente(){
+  const e = ESCALAS[FP.info.prueba], r = respuestas(FP.info.prueba);
+  if (r.includes(null)) { toast('Responde todas las preguntas', true); const i = r.indexOf(null); const el = document.querySelector(`input[name=it${i}]`); if (el) el.closest('.item').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  const b = $('fp-btn'); if (b.disabled) return; b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const x = await cifrarParaProfesional(FP.info.clave, { respuestas: r, prueba: FP.info.prueba, enviado: new Date().toISOString() });
+    const { error } = await sb.rpc('formulario_responder', Object.assign({ p_token: FTOKEN }, x));
+    if (error) throw error;
+    graciasFormulario(false, FP.info.prueba === 'PHQ-9' && r[8] > 0);
+  } catch (err) { b.disabled = false; b.textContent = 'Enviar respuestas'; toast(mensajeError(err), true); }
+}
+function iniciarFirma(){
+  const c = $('fp-c'), r = window.devicePixelRatio || 1; c.width = c.clientWidth * r; c.height = c.clientHeight * r;
+  const x = c.getContext('2d'); x.scale(r, r); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.lineWidth = 2.4; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#0f172a';
+  let on = false; FP.trazos = 0;
+  const pos = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.onpointerdown = e => { on = true; c.setPointerCapture(e.pointerId); const [a, b] = pos(e); x.beginPath(); x.moveTo(a, b); };
+  c.onpointermove = e => { if (!on) return; const [a, b] = pos(e); x.lineTo(a, b); x.stroke(); FP.trazos++; };
+  c.onpointerup = c.onpointercancel = () => { on = false; };
+}
+function limpiarFirma(){ iniciarFirma(); }
+async function enviarConsentimiento(){
+  const n = $('fp-n').value.trim(), d = $('fp-d').value.replace(/[^0-9A-Za-z]/g, '');
+  if (n.length < 5) { toast('Escribe tu nombre completo', true); return; }
+  if (d.length < 4) { toast('Escribe tu número de documento', true); return; }
+  if (!$('fp-ok').checked) { toast('Marca que leíste y aceptas el consentimiento', true); return; }
+  if (FP.trazos < 15) { toast('Firma con tu dedo en el recuadro', true); return; }
+  const b = $('fp-btn'); if (b.disabled) return; b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const c = $('fp-c'), s = document.createElement('canvas'); s.width = 600; s.height = Math.round(600 * c.height / c.width);
+    s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
+    const x = await cifrarParaProfesional(FP.info.clave, { nombre: n, documento: d, firma: s.toDataURL('image/jpeg', 0.8), texto: $('fp-txt').innerHTML, acepta: true, firmado: new Date().toISOString(), dispositivo: navigator.userAgent });
+    const { error } = await sb.rpc('formulario_responder', Object.assign({ p_token: FTOKEN }, x));
+    if (error) throw error;
+    graciasFormulario(false);
+  } catch (err) { b.disabled = false; b.textContent = 'Firmar y enviar'; toast(mensajeError(err), true); }
+}
+function graciasFormulario(yaEstaba, crisis){
+  app.innerHTML = cabeceraPub(yaEstaba ? 'Ya está enviado ✅' : '¡Gracias! ✅') + `<div class="wrap"><div class="card" style="text-align:center"><p style="font-size:15px;line-height:1.6">${yaEstaba ? 'Este enlace ya se usó.' : 'Tus respuestas llegaron cifradas a ' + esc((FP.info && FP.info.profesional) || 'tu profesional') + '.'} Las revisará contigo en tu próxima sesión.</p>
+  ${crisis ? `<div class="aviso err" style="text-align:left">💙 Si en este momento tienes pensamientos de hacerte daño, no estás solo(a). Llama ya a la <b>Línea 106</b> (gratuita, 24 horas) o al <b>123</b>, y cuéntale a alguien de confianza.</div><a class="btn full" href="tel:106">📞 Llamar a la Línea 106</a>` : ''}
+  </div><div class="pie">Consulta LV · LV Studio</div></div>`;
+}
+
+/* --- PÁGINA PÚBLICA: EL PACIENTE GESTIONA SU CITA --- */
+const CTOKEN = /^[0-9a-f-]{36}$/i.test(new URLSearchParams(location.search).get('c') || '') ? new URLSearchParams(location.search).get('c') : '';
+const CP = { d: null, dias: [], fecha: null, hora: null };
+async function paginaCita(){
+  app.innerHTML = cabeceraPub('Tu cita') + '<div class="wrap"><div class="carga">Cargando…</div></div>';
+  const { data } = await sb.rpc('cita_paciente', { p_token: CTOKEN });
+  if (!data) { app.innerHTML = cabeceraPub('Enlace no válido') + `<div class="wrap"><div class="empty">No encontramos esta cita.</div></div>`; return; }
+  CP.d = data; aplicarColor(data.color); pintarCita();
+}
+function pintarCita(msg){
+  const d = CP.d, e = ESTADOS[d.estado] || ['', 'b-gris'], wa = d.whatsapp ? 'https://wa.me/' + waNum(d.whatsapp) : '';
+  app.innerHTML = cabeceraPub('Tu cita', 'Consulta LV') + `<div class="wrap" style="padding-bottom:40px">
+  ${msg ? `<div class="aviso ok">${msg}</div>` : ''}
+  <div class="card"><div class="row"><span class="grow"><b style="font-size:17px">${esc(d.servicio || 'Cita')}</b><div class="sub">con ${esc(d.profesional)}</div></span><span class="badge ${e[1]}">${e[0]}</span></div>
+  <p style="font-size:15px;line-height:1.8;margin:10px 0 0">📅 <b>${esc(fecha(d.inicio, { weekday: 'long', day: 'numeric', month: 'long' }))}</b><br>🕘 ${esc(hora(d.inicio))} – ${esc(hora(d.fin))}<br>
+  ${/^https:\/\//.test(d.enlace || '') ? `🎥 Cita virtual` : d.direccion ? `📍 ${esc(d.direccion)}` : ''}</p>
+  ${/^https:\/\//.test(d.enlace || '') && ['pendiente', 'confirmada'].includes(d.estado) ? `<a class="btn full" target="_blank" rel="noopener" href="${esc(d.enlace)}">🎥 Entrar a la videollamada</a><p class="mini">Ábrelo a la hora de la cita, desde un lugar privado y con audífonos si puedes.</p>` : ''}
+  ${d.confirmada ? '<p class="mini">✅ Ya confirmaste tu asistencia.</p>' : ''}</div>
+  ${d.puede_cancelar ? `<div class="card"><h3 style="margin-top:0">¿Qué quieres hacer?</h3>
+    ${!d.confirmada ? `<button class="btn full" onclick="accionCita('confirmar')">✅ Confirmo que asistiré</button>` : ''}
+    ${d.puede_reprogramar ? `<button class="btn full ghost" onclick="abrirReprogramar()">🔄 Cambiar fecha u hora</button>` : `<p class="mini">Para cambiar la fecha con menos de 12 horas, escríbele a ${esc(d.profesional)}.</p>`}
+    <button class="btn full red" onclick="accionCita('cancelar')">Cancelar mi cita</button></div><div id="rp"></div>` : ''}
+  ${wa ? `<a class="btn full ghost" target="_blank" rel="noopener" href="${wa}">💬 Escribirle a ${esc(d.profesional)}</a>` : ''}
+  ${d.slug ? `<a class="btn full ghost" href="${esc(urlPublica('?p=' + d.slug))}">Ver perfil</a>` : ''}
+  <div class="pie">¿Estás en crisis? Línea 106 · 123<br>Consulta LV · LV Studio</div></div>`;
+}
+async function accionCita(a){
+  let motivo = '';
+  if (a === 'cancelar') { motivo = prompt('¿Seguro que quieres cancelar? Si quieres, cuéntanos el motivo (opcional):', ''); if (motivo === null) return; }
+  const { error } = await sb.rpc('cita_paciente_accion', { p_token: CTOKEN, p_accion: a, p_motivo: motivo || '' });
+  if (error) { toast(mensajeError(error), true); return; }
+  const { data } = await sb.rpc('cita_paciente', { p_token: CTOKEN }); if (data) CP.d = data;
+  pintarCita(a === 'confirmar' ? '¡Gracias! Le avisamos a tu profesional que asistirás.' : 'Tu cita quedó cancelada. Le avisamos a tu profesional.' + (CP.d.slug ? ` <a href="${esc(urlPublica('?p=' + CP.d.slug))}">Reservar otra fecha</a>` : ''));
+}
+async function abrirReprogramar(){
+  const box = $('rp'); box.innerHTML = '<div class="card"><div class="carga">Buscando horarios…</div></div>';
+  const ini = hoyYMD(), fin = sumarDias(ini, 30);
+  const { data, error } = await sb.rpc('dias_disponibles', { p_slug: CP.d.slug, p_servicio: CP.d.servicio_id, p_desde: ini, p_hasta: fin });
+  CP.dias = error ? [] : (data || []).map(x => typeof x === 'string' ? x : (x.dia || x.fecha || Object.values(x)[0])).map(x => String(x).slice(0, 10));
+  CP.fecha = null; CP.hora = null; pintarReprogramar(); box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function pintarReprogramar(horas){
+  const box = $('rp'); if (!box) return;
+  box.innerHTML = `<div class="card"><h3 style="margin-top:0">🔄 Elige la nueva fecha</h3>
+  ${CP.dias.length ? `<div class="chips">${CP.dias.map(d => { const t = fecha(d + 'T17:00:00Z', { weekday: 'short', day: 'numeric', month: 'short' }); return `<div class="chip ${CP.fecha === d ? 'on' : ''}" onclick="elegirDiaRep('${d}')">${esc(t)}</div>`; }).join('')}</div>` : '<p class="mini">No hay horarios libres en los próximos 30 días. Escríbele a tu profesional.</p>'}
+  <div id="rp-h">${horas || ''}</div></div>`;
+}
+async function elegirDiaRep(d){
+  CP.fecha = d; CP.hora = null; pintarReprogramar('<div class="carga">Cargando horas…</div>');
+  const { data } = await sb.rpc('horarios_libres', { p_slug: CP.d.slug, p_servicio: CP.d.servicio_id, p_fecha: d });
+  const l = [...new Set((data || []).map(x => x.hora))];
+  $('rp-h').innerHTML = l.length ? `<div class="franja-t">Horas libres</div><div class="grid">${l.map(h => `<button class="slot" onclick="confirmarRep('${esc(h)}')">${esc(hora(h))}</button>`).join('')}</div>` : '<p class="mini">Ese día ya no tiene horas libres.</p>';
+}
+async function confirmarRep(h){
+  if (!confirm(`¿Cambiar tu cita para el ${fecha(h, { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hora(h)}?`)) return;
+  const { error } = await sb.rpc('cita_reprogramar', { p_token: CTOKEN, p_inicio: h });
+  if (error) { toast(mensajeError(error), true); if (/disponible/i.test(error.message || '')) elegirDiaRep(CP.fecha); return; }
+  const { data } = await sb.rpc('cita_paciente', { p_token: CTOKEN }); if (data) CP.d = data;
+  pintarCita('✅ Tu cita quedó para el <b>' + esc(fecha(h, { weekday: 'long', day: 'numeric', month: 'long' })) + ' a las ' + esc(hora(h)) + '</b>. Le avisamos a tu profesional.');
+}
+
+/* --- RECORDAR CITAS DE MAÑANA POR WHATSAPP --- */
+function htmlManana(citas){
+  const m = sumarDias(hoyYMD(), 1), l = citas.filter(c => bog(c.inicio).ymd === m && ['pendiente', 'confirmada'].includes(c.estado) && (c.pacientes || {}).telefono);
+  if (!l.length) return '';
+  return `<div class="card"><div class="row"><h3 class="grow" style="margin:0">💬 Recordar citas de mañana</h3><span class="badge b-conf">${l.length}</span></div>
+  <p class="mini">Un toque abre WhatsApp con el mensaje listo, con el enlace para confirmar, cancelar o reprogramar.</p>
+  ${l.map(c => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)"><span class="grow"><b>${esc(hora(c.inicio))}</b> · ${esc(c.pacientes.nombres)}${c.confirmada_paciente_at ? ' <span class="badge b-ok">Confirmó</span>' : ''}</span>
+  <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(c))}">💬 Enviar</a></div>`).join('')}</div>`;
 }
 
 /* --- CALENDARIO (Google y .ics) --- */
@@ -2666,6 +3014,8 @@ function htmlResenasPublicas(p){
 /* ===== INICIO ===== */
 (async function iniciar(){
   if (RTOKEN) { paginaResena(); return; }
+  if (FTOKEN) { paginaFormulario(); return; }
+  if (CTOKEN) { paginaCita(); return; }
   if (ES_DIR) { paginaDirectorio(); return; }
   if (SLUG) { paginaPublica(); return; }
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') pantallaNuevaClave(); });
