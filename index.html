@@ -210,7 +210,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.8';
+const VERSION = '3.8.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -560,7 +560,7 @@ async function ingresar(){
   const { error } = await sb.auth.signInWithPassword({ email: $('a-email').value.trim(), password: $('a-pass').value });
   b.disabled = false;
   if (error) { toast(mensajeError(error), true); return; }
-  entrarConMFA();
+  marcarActividad(); entrarConMFA();
 }
 async function crearCuenta(){
   const email = $('a-email').value.trim(), pass = $('a-pass').value;
@@ -590,20 +590,29 @@ async function guardarNuevaClave(){
   if (p.length < 10 || !/[0-9]/.test(p) || !/[a-zA-Z]/.test(p)) { toast('Mínimo 10 caracteres, con letras y números', true); return; }
   const { error } = await sb.auth.updateUser({ password: p });
   if (error) { toast(mensajeError(error), true); return; }
-  toast('Contraseña actualizada ✅'); entrarConMFA();
+  toast('Contraseña actualizada ✅'); marcarActividad(); entrarConMFA();
 }
 async function salir(msg){ C.dk = null; C.priv = null; await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
 
 /* --- cierre por inactividad --- */
 let tInact;
-function reiniciarInactividad(){ clearTimeout(tInact); if (S.prof) tInact = setTimeout(() => salir('Sesión cerrada por inactividad 🔒'), INACTIVIDAD_MIN * 60000); }
-['click','keydown','touchstart','scroll'].forEach(e => document.addEventListener(e, reiniciarInactividad, { passive: true }));
+/* Se guarda la hora del último uso: así se cierra aunque el celular haya estado bloqueado o la app en segundo plano */
+let ULT_MEM = 0, ULT_ESC = 0;
+function marcarActividad(){ ULT_MEM = Date.now(); try { localStorage.setItem('clv_ult', String(ULT_MEM)); } catch (e) {} }
+function ultimaActividad(){ let t = 0; try { t = +localStorage.getItem('clv_ult') || 0; } catch (e) {} return Math.max(t, ULT_MEM); }
+function inactivoDemasiado(){ const t = ultimaActividad(); return !t || Date.now() - t > INACTIVIDAD_MIN * 60000; }
+function reiniciarInactividad(){ if (!S.prof || inactivoDemasiado()) return; const n = Date.now(); if (n - ULT_ESC < 5000) return; ULT_ESC = n; marcarActividad(); }
+function revisarInactividad(){ if (S.prof && inactivoDemasiado()) salir('Sesión cerrada por inactividad 🔒'); }
+['click','keydown','touchstart','scroll'].forEach(e => document.addEventListener(e, reiniciarInactividad, { passive: true, capture: true }));
+setInterval(revisarInactividad, 20000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') revisarInactividad(); });
+window.addEventListener('pageshow', revisarInactividad); window.addEventListener('focus', revisarInactividad);
 
 async function abrirPanel(){
   app.innerHTML = `<div class="carga">Cargando tu consultorio…</div>`;
   const { data, error } = await sb.from('profesionales').select('*').single();
   if (error || !data) { toast(mensajeError(error), true); pantallaAcceso('entrar'); return; }
-  S.prof = data; reiniciarInactividad();
+  S.prof = data; marcarActividad();
   S.admin = false; sb.rpc('es_admin').then(r => { S.admin = !!(r && r.data === true); }).catch(() => {});
   S.vista = 'inicio';
   pintarPanel();
@@ -3021,6 +3030,7 @@ function htmlResenasPublicas(p){
   sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') pantallaNuevaClave(); });
   if (/type=recovery/.test(location.hash)) return;
   const { data: { session } } = await sb.auth.getSession();
+  if (session && inactivoDemasiado()) { await sb.auth.signOut(); pantallaAcceso('entrar'); toast('Por seguridad, la sesión se cerró por inactividad 🔒'); return; }
   if (session) entrarConMFA(); else pantallaAcceso('entrar');
 })();
 
