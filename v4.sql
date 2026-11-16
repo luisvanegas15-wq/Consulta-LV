@@ -15,6 +15,7 @@ create schema if not exists privado;
 revoke all on schema privado from public, anon, authenticated;
 create table if not exists privado.config (clave text primary key, valor text not null);
 revoke all on privado.config from public, anon, authenticated;
+alter table privado.config enable row level security;
 
 -- Guarda la llave de Brevo cifrada en Vault y el remitente. Se ejecuta una sola vez (ver paso 2).
 create or replace function privado.configurar_correo(p_api_key text, p_remitente text, p_nombre text default 'Consulta LV')
