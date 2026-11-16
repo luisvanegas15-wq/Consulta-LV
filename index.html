@@ -165,9 +165,14 @@ nav{position:fixed;bottom:0;left:0;right:0;background:#fff;display:flex;justify-
 nav button{background:none;border:none;font-size:11px;color:var(--sub);display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;flex:1}
 nav button i{font-style:normal;font-size:21px}
 nav button.on{color:var(--pri);font-weight:700}
-.modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:flex-end;z-index:20}
+.modal{position:fixed;inset:0;height:100vh;height:100dvh;background:rgba(15,23,42,.55);display:none;align-items:flex-end;z-index:20;overscroll-behavior:contain}
+body.con-modal{overflow:hidden}
+@media(min-width:760px){.modal{align-items:center}.modal .sheet{border-radius:24px}}
 .modal.on{display:flex}
-.sheet{background:#fff;width:100%;max-width:720px;margin:0 auto;border-radius:24px 24px 0 0;padding:22px 20px calc(env(safe-area-inset-bottom) + 22px);max-height:90vh;overflow:auto}
+.sheet{background:#fff;width:100%;max-width:720px;margin:0 auto;border-radius:24px 24px 0 0;padding:0 20px calc(env(safe-area-inset-bottom) + 22px);max-height:90vh;max-height:92dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;position:relative}
+.sheet-x{position:sticky;top:0;z-index:3;display:flex;justify-content:flex-end;background:linear-gradient(#fff 70%,rgba(255,255,255,0));padding:10px 0 4px;margin-bottom:-6px}
+.sheet-x button{width:38px;height:38px;border-radius:50%;border:none;background:#f1f5f9;font-size:18px;cursor:pointer;color:var(--txt)}
+.sheet-pie{position:sticky;bottom:calc(-1 * (env(safe-area-inset-bottom) + 22px));background:#fff;padding:10px 0 calc(env(safe-area-inset-bottom) + 14px);margin-bottom:calc(-1 * (env(safe-area-inset-bottom) + 22px));box-shadow:0 -8px 14px -10px rgba(0,0,0,.25);z-index:3}
 .sheet p,.sheet li{font-size:14px;line-height:1.55;margin-bottom:8px}
 .sheet ul{margin-left:18px}
 #toast{position:fixed;left:50%;top:20px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;z-index:50;display:none;max-width:90%;text-align:center}
@@ -191,7 +196,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.5';
+const VERSION = '3.5.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -203,12 +208,12 @@ function esc(t){ return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','
 function toast(msg, err){ const t = $('toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); }
 function abrirModal(html){
   const ya = $('modal').classList.contains('on');
-  $('modal-c').innerHTML = html; $('modal').classList.add('on'); $('modal-c').scrollTop = 0;
+  $('modal-c').innerHTML = `<div class="sheet-x"><button onclick="cerrarModal()" aria-label="Cerrar">✕</button></div>` + html; $('modal').classList.add('on'); document.body.classList.add('con-modal'); $('modal-c').scrollTop = 0;
   if (!ya) history.pushState(Object.assign({}, NAV.actual || {}, { modal: 1 }), '');
 }
 function cerrarModal(){
   if (!$('modal').classList.contains('on')) return;
-  $('modal').classList.remove('on');
+  $('modal').classList.remove('on'); document.body.classList.remove('con-modal');
   setTimeout(() => { if (history.state && history.state.modal) { NAV.ignorar = true; history.back(); } }, 0);
 }
 /* --- NAVEGACIÓN: botón ← y gesto/botón atrás del celular --- */
@@ -222,7 +227,7 @@ function empujar(st){
 function actualizarAtras(){ const b = $('btn-atras'); if (b) b.style.display = NAV.actual && NAV.actual.d > 0 ? 'block' : 'none'; }
 window.addEventListener('popstate', e => {
   if (NAV.ignorar) { NAV.ignorar = false; return; }
-  if ($('modal').classList.contains('on')) { $('modal').classList.remove('on'); return; }
+  if ($('modal').classList.contains('on')) { $('modal').classList.remove('on'); document.body.classList.remove('con-modal'); return; }
   if (!S.prof) { if (SLUG && R.perfil) pasoAtras(true); return; }
   const st = e.state && e.state.v ? e.state : { v: 'inicio', d: 0 };
   NAV.actual = st;
@@ -1319,8 +1324,7 @@ async function formNota(id, o){
   <div id="nt-acc-box" style="display:${d.riesgo==='medio'||d.riesgo==='alto'?'block':'none'}">
     <div class="aviso err" style="margin-top:10px;font-size:13px"><b>Protocolo sugerido:</b> indaga ideación, plan y medios · elabora un plan de seguridad · activa la red de apoyo (contacto de emergencia) · si el riesgo es inminente, remite a urgencias o a la Línea 106 / 123 · documenta las acciones.</div>
     <label>Acciones realizadas frente al riesgo</label><textarea id="nt-acc" maxlength="3000">${esc(d.acciones_riesgo)}</textarea></div>
-  <button class="btn full" id="nt-btn" onclick="guardarNota(${n ? `'${n.id}'` : 'null'})">Guardar nota cifrada</button>
-  <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="nt-btn" onclick="guardarNota(${n ? `'${n.id}'` : 'null'})">Guardar nota</button></div></div>`);
   $('nt-tipo').value = d.tipo || 'seguimiento'; $('nt-riesgo').value = d.riesgo || 'ninguno';
 }
 async function guardarNota(id){
@@ -1430,10 +1434,9 @@ function formEscala(tipo){
   abrirModal(`<h3>${e.nombre}</h3><p class="mini" style="margin-top:0">${e.periodo} ${e.max ? 'Instrumento de tamizaje, no reemplaza el juicio clínico.' : ''}</p>
   ${e.items.map((it, i) => `<div class="item"><p><b>${i + 1}.</b> ${esc(typeof it === 'object' ? it.t : it)}</p><div class="opc">${itemOps(e, it).map(([o, v]) => `<label><input type="radio" name="it${i}" value="${v}" onchange="sumaEscala('${tipo}')"><span>${e.max ? v + '<br>' : ''}${esc(o)}</span></label>`).join('')}</div></div>`).join('')}
   ${tipo === 'RIESGO' ? `<label>Factores protectores y de riesgo observados</label><textarea id="es-obs" maxlength="2000" placeholder="Ej: red de apoyo familiar, hijos, desesperanza, consumo, pérdida reciente…"></textarea>` : ''}
-  <div class="aviso info" id="es-total" style="margin-top:12px">Responde todas las preguntas.</div>
   ${e.fuente ? `<p class="mini">${esc(e.fuente)}</p>` : ''}
-  <button class="btn full" id="es-btn" onclick="guardarEscala('${tipo}')">Guardar resultado cifrado</button>
-  <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+  <div class="sheet-pie"><div class="aviso info" id="es-total" style="margin:0 0 8px">Responde todas las preguntas.</div>
+  <div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="es-btn" onclick="guardarEscala('${tipo}')">Guardar</button></div></div>`);
 }
 function respuestas(tipo){ return ESCALAS[tipo].items.map((_, i) => { const r = document.querySelector(`input[name=it${i}]:checked`); return r ? +r.value : null; }); }
 function evaluarEscala(tipo, r){ const e = ESCALAS[tipo], t = r.reduce((a, b) => a + b, 0); return { t, n: e.evaluar ? e.evaluar(r) : e.nivel(t), alerta: e.alerta ? e.alerta(r) : '' }; }
@@ -1791,9 +1794,7 @@ function formHistoria(id, o){
   <label>Riesgo suicida, de autolesión o de agresión</label><select id="nt-riesgo" onchange="$('nt-acc-box').style.display=(this.value==='medio'||this.value==='alto')?'block':'none'">${Object.entries(RIESGO).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select>
   <div id="nt-acc-box" style="display:${n && (n.d.riesgo === 'medio' || n.d.riesgo === 'alto') ? 'block' : 'none'}"><div class="aviso err" style="margin-top:10px;font-size:13px"><b>Protocolo sugerido:</b> indaga ideación, plan y medios · plan de seguridad · activa la red de apoyo · si es inminente, urgencias o Línea 106 / 123 · documenta.</div>
   <label>Acciones realizadas frente al riesgo</label><textarea id="nt-acc" maxlength="3000">${esc(n ? n.d.acciones_riesgo : '')}</textarea></div></details>
-  <button class="btn full" id="hc-btn" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},false)">Guardar historia clínica</button>
-  <button class="btn full ghost" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},true)">Guardar borrador</button>
-  <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},true)">Guardar borrador</button><button class="btn full" id="hc-btn" onclick="guardarHistoria(${n ? `'${n.id}'` : 'null'},false)">Guardar historia</button></div></div>`);
   $('nt-riesgo').value = (n && n.d.riesgo) || 'ninguno';
 }
 async function guardarHistoria(id, borrador){
