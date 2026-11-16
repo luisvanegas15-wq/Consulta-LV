@@ -93,6 +93,10 @@ a.dircard{display:block;color:inherit;text-decoration:none}
 .cg-bloq{position:absolute;left:0;right:0;background:repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 6px,#f1f5f9 6px,#f1f5f9 12px);border-radius:6px;z-index:1;cursor:pointer;overflow:hidden}
 .cg-bloq span{display:block;position:sticky;top:0;background:rgba(241,245,249,.9);font-size:11px;font-weight:700;color:#475569;padding:3px 5px}
 .mes td button.fest{color:#dc2626}
+.cg-nuevo{position:absolute;left:2px;right:2px;z-index:4;display:flex;gap:2px;border-radius:8px;box-shadow:0 4px 14px rgba(14,116,144,.35);animation:aparece .12s ease-out}
+.cg-nuevo button{flex:1;border:none;border-radius:8px;background:var(--pri);color:#fff;font-weight:800;font-size:12px;cursor:pointer;padding:0 6px;text-align:left}
+.cg-nuevo button.x{flex:0 0 28px;text-align:center;background:#0b5c73}
+@keyframes aparece{from{transform:scale(.96);opacity:0}to{transform:none;opacity:1}}
 .pub-barra .btn{white-space:nowrap;flex-shrink:0}
 .reserva-l{display:grid;gap:12px}@media(min-width:760px){.reserva-l{grid-template-columns:330px minmax(0,1fr);align-items:start}}
 .pmes td button{width:38px;height:38px;font-size:14px}
@@ -196,7 +200,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.5.1';
+const VERSION = '3.5.2';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -832,9 +836,15 @@ function htmlLista(){
   return h + '</div>';
 }
 function clicHueco(ev, d){
-  if (ev.target.closest('.ev')) return;
-  const r = ev.currentTarget.getBoundingClientRect(), min = Math.floor(((ev.clientY - r.top) / PX * 60 + H0 * 60) / 30) * 30;
-  formCita({ fecha: d, hora: hhmm(Math.min(min, H1 * 60 - 30)) });
+  if (ev.target.closest('.ev') || ev.target.closest('.cg-bloq')) return;
+  if (ev.target.closest('.cg-nuevo')) return;
+  const col = ev.currentTarget, r = col.getBoundingClientRect(), min = Math.min(Math.floor(((ev.clientY - r.top) / PX * 60 + H0 * 60) / 30) * 30, H1 * 60 - 30);
+  const prev = document.querySelector('.cg-nuevo');
+  if (prev) { prev.remove(); return; }
+  const h = hhmm(min), el = document.createElement('div');
+  el.className = 'cg-nuevo'; el.style.top = ((min - H0 * 60) / 60 * PX) + 'px'; el.style.height = (PX - 3) + 'px';
+  el.innerHTML = `<button onclick="event.stopPropagation();this.parentNode.remove();formCita({fecha:'${d}',hora:'${h}'})">＋ Cita ${esc(hora(new Date(`${d}T${h}:00-05:00`).toISOString()))}</button><button class="x" aria-label="Quitar" onclick="event.stopPropagation();this.parentNode.remove()">✕</button>`;
+  col.appendChild(el);
 }
 function irFecha(d){ A.fecha = d; A.mes = d.slice(0, 7); if (A.modo === 'lista') A.modo = innerWidth >= 900 ? 'semana' : 'dia'; if (innerWidth < 900) A.abierto = false; cargarAgenda(); }
 function moverAgenda(n){ A.fecha = sumarDias(A.fecha, n * (A.modo === 'dia' ? 1 : 7)); A.mes = A.fecha.slice(0, 7); cargarAgenda(); }
