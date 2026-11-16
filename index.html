@@ -182,7 +182,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.2';
+const VERSION = '3.2.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -392,6 +392,9 @@ async function cargarHoras(){
     lista = (r2.data || []).map(x => ({ hora: x.hora, libre: true }));
   } else lista = r.data;
   if (R.fecha !== fch || !$('horas')) return;
+  const vistos = new Map();
+  lista.forEach(x => { const k = new Date(x.hora).getTime(), y = vistos.get(k); if (!y) vistos.set(k, Object.assign({}, x)); else if (!x.libre) y.libre = false; });
+  lista = [...vistos.values()].sort((a, b) => new Date(a.hora) - new Date(b.hora));
   R.horas = lista.filter(x => x.libre).map(x => x.hora);
   if (lista.length && R.horas.length) {
     const grupos = [['🌅 Mañana', x => bog(x.hora).min < 720], ['☀️ Tarde', x => bog(x.hora).min >= 720 && bog(x.hora).min < 1080], ['🌙 Noche', x => bog(x.hora).min >= 1080]];
@@ -894,7 +897,8 @@ async function vistaHorarios(){
   if (!S.disp.length) { $('lista-disp').innerHTML = `<div class="empty">Agrega tus franjas de atención. Ej: lunes de 8:00 a. m. a 12:00 m.</div>`; return; }
   $('lista-disp').innerHTML = `<div class="card">` + ORDEN_DIAS.map(d => {
     const fr = S.disp.filter(x => x.dia === d); if (!fr.length) return '';
-    return `<div class="dia">${DIAS[d]}</div>` + fr.map(x => `<div class="franja"><span>${x.hora_inicio.slice(0,5)} – ${x.hora_fin.slice(0,5)}</span><button class="btn sm red" onclick="borrarFranja('${x.id}')">Quitar</button></div>`).join('');
+    const dup = fr.some((x, i) => fr.some((y, j) => j !== i && x.hora_inicio < y.hora_fin && y.hora_inicio < x.hora_fin));
+    return `<div class="dia">${DIAS[d]}${dup ? ' <span class="badge b-bad">Franjas repetidas: quita una</span>' : ''}</div>` + fr.map(x => `<div class="franja"><span>${x.hora_inicio.slice(0,5)} – ${x.hora_fin.slice(0,5)}</span><button class="btn sm red" onclick="borrarFranja('${x.id}')">Quitar</button></div>`).join('');
   }).join('') + `</div>`;
 }
 function formFranja(){
@@ -908,6 +912,8 @@ async function guardarFranja(){
   const ini = $('f-ini').value, fin = $('f-fin').value;
   if (!dias.length) { toast('Elige al menos un día', true); return; }
   if (!ini || !fin || fin <= ini) { toast('La hora final debe ser después de la inicial', true); return; }
+  const cruce = dias.find(d => S.disp.some(x => x.dia === d && x.hora_inicio.slice(0, 5) < fin && ini < x.hora_fin.slice(0, 5)));
+  if (cruce !== undefined) { toast(`El ${DIAS[cruce].toLowerCase()} ya tiene una franja que se cruza con ese horario. Quítala o ajusta las horas.`, true); return; }
   const { error } = await sb.from('disponibilidad').insert(dias.map(d => ({ dia: d, hora_inicio: ini, hora_fin: fin })));
   if (error) { toast(mensajeError(error), true); return; }
   cerrarModal(); toast('Horario guardado ✅'); vistaHorarios();
