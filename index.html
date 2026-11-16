@@ -85,6 +85,9 @@ nav button{font-size:10.5px}
 .resp{background:#f0f9ff;border-radius:10px;padding:8px 10px;font-size:13px;margin-top:8px}
 a.dircard{display:block;color:inherit;text-decoration:none}
 .wrap.pub{max-width:920px}
+.pub-barra{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-radius:14px;padding:8px 10px;margin:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:13px;line-height:1.3}
+.pub-barra small{color:var(--sub)}
+.pub-barra .btn{white-space:nowrap;flex-shrink:0}
 .reserva-l{display:grid;gap:12px}@media(min-width:760px){.reserva-l{grid-template-columns:330px minmax(0,1fr);align-items:start}}
 .pmes td button{width:38px;height:38px;font-size:14px}
 .pmes td button:disabled{color:#cbd5e1;cursor:default;background:none;text-decoration:none}
@@ -182,7 +185,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.2.1';
+const VERSION = '3.2.2';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -214,7 +217,7 @@ function actualizarAtras(){ const b = $('btn-atras'); if (b) b.style.display = N
 window.addEventListener('popstate', e => {
   if (NAV.ignorar) { NAV.ignorar = false; return; }
   if ($('modal').classList.contains('on')) { $('modal').classList.remove('on'); return; }
-  if (!S.prof) return;
+  if (!S.prof) { if (SLUG && R.perfil) pasoAtras(true); return; }
   const st = e.state && e.state.v ? e.state : { v: 'inicio', d: 0 };
   NAV.actual = st;
   if (st.ficha) abrirFicha(st.ficha, true); else irA(st.v, true);
@@ -305,8 +308,11 @@ function pintarPublica(){
       ${p.direccion ? `<p class="mini">📍 Consultorio: ${esc(p.direccion)}</p>` : ''}
     </div>`;
   }
-  let h = `<header style="padding-bottom:70px"><small>Reserva tu cita en línea</small></header>
+  const desdeDir = /[?&]dir=/.test(document.referrer || '');
+  let h = `<header style="padding-bottom:70px"><small>Reserva tu cita en línea</small>
+    ${desdeDir ? `<button class="hbtn" onclick="history.back()">← Directorio</button>` : ''}</header>
   <div class="wrap pub" style="padding-bottom:70px">
+  ${R.serv ? `<div class="pub-barra"><button class="btn sm ghost" onclick="pasoAtras()">← Volver</button><span id="pub-resumen" class="grow"></span></div>` : ''}
   <div class="perfil">${f ? `<img class="foto foto-g" src="${esc(f)}" alt="">` : `<div class="foto foto-g" style="display:inline-flex;align-items:center;justify-content:center;font-size:40px">🧠</div>`}
     <h1>${esc(p.nombre)}</h1>
     <div class="sub">${esc(p.titulo)}${p.tarjeta ? ' · T.P. ' + esc(p.tarjeta) : ''}${p.ciudad ? ' · ' + esc(p.ciudad) : ''}</div>
@@ -334,16 +340,32 @@ function pintarPublica(){
     Plataforma segura de LV Studio · Consulta LV</div></div>
   <div class="crisis"><span>¿Estás en crisis?</span><span><a href="tel:106">📞 Línea 106</a> · <a href="tel:123">🚨 123</a></span></div>`;
   app.innerHTML = h;
-  if (R.serv) cargarDias();
+  if (R.serv) { actualizarBarra(); cargarDias(); }
+}
+function actualizarBarra(){
+  const b = $('pub-resumen'); if (!b || !R.serv) return;
+  b.innerHTML = `<b>${esc(R.serv.nombre)}</b>${R.hora ? ' · ' + esc(fecha(R.hora, { weekday: 'short', day: 'numeric', month: 'short' })) + ' ' + esc(hora(R.hora)) : ''}<br><small>${R.hora ? 'Paso 3 de 3: tus datos' : 'Paso 2 de 3: fecha y hora'}</small>`;
+}
+function pasoAtras(desdeHistorial){
+  if (!desdeHistorial && history.state && history.state.pub) { history.back(); return; }
+  if (R.hora) {
+    R.hora = null; const f = $('form-reserva'); if (f) f.innerHTML = '';
+    cargarHoras(); actualizarBarra();
+    const p = $('paso2'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (R.serv) {
+    R.serv = null; R.dias = null; pintarPublica(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (!desdeHistorial && /[?&]dir=/.test(document.referrer || '')) history.back();
 }
 
 function elegirServicio(id){
+  if (!R.serv) history.pushState({ pub: 1 }, '');
   R.serv = R.perfil.servicios.find(s => s.id === id); R.hora = null; R.elegida = false; R.dias = null;
   R.mes = (R.fecha || hoyYMD()).slice(0, 7); pintarPublica();
   setTimeout(() => { const p = $('paso2'); if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
 }
 function elegirFecha(d){
-  R.fecha = d; R.hora = null; R.elegida = true; pintarMesPublico(); cargarHoras();
+  if (R.hora && history.state && history.state.pub === 2) history.replaceState({ pub: 1 }, '');
+  R.fecha = d; R.hora = null; actualizarBarra(); R.elegida = true; pintarMesPublico(); cargarHoras();
   const f = $('form-reserva'); if (f) f.innerHTML = '';
   if (innerWidth < 760) setTimeout(() => { const c = $('r-horas-c'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
 }
@@ -409,7 +431,7 @@ async function cargarHoras(){
   if (lista.length) { box.innerHTML = `<div class="empty">Todas las horas de este día ya están reservadas.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`; return; }
   box.innerHTML = `<div class="empty">No hay atención este día. Elige un día marcado en verde.<br><button class="btn sm ghost" style="margin-top:10px" onclick="formEspera()">⏳ Anotarme en lista de espera</button></div>`;
 }
-function elegirHora(t){ if (!R.horas.includes(t)) return; R.hora = t; cargarHoras().then(() => { const f = $('form-reserva'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); }
+function elegirHora(t){ if (!R.horas.includes(t)) return; if (!R.hora) history.pushState({ pub: 2 }, ''); R.hora = t; actualizarBarra(); cargarHoras().then(() => { const f = $('form-reserva'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); }); }
 
 function pintarFormReserva(){
   const n = R.perfil.nombre;
@@ -457,6 +479,7 @@ async function confirmarReserva(){
     ${v('r-email') ? `<p class="mini">📧 También te enviaremos un recordatorio a ${esc(v('r-email'))} el día anterior.</p>` : ''}
     ${R.serv.precio ? htmlPagoPublico(p).replace('class="card"', 'style="margin:12px 0"') : ''}
     ${p.whatsapp ? `<a class="btn full" href="https://wa.me/${waNum(p.whatsapp)}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">💬 Avisar por WhatsApp</a>` : ''}
+    <a class="btn full ghost" href="${esc(urlPublica('?p=' + SLUG))}">Listo · volver al perfil</a>
     <p class="mini">Si se te presenta una emergencia emocional, comunícate con la Línea 106 o el 123.</p></div></div>`;
 }
 
