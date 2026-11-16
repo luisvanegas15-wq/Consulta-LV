@@ -87,6 +87,9 @@ a.dircard{display:block;color:inherit;text-decoration:none}
 .wrap.pub{max-width:920px}
 .pub-barra{position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border-radius:14px;padding:8px 10px;margin:10px 0;box-shadow:0 4px 14px rgba(0,0,0,.08);font-size:13px;line-height:1.3}
 .pub-barra small{color:var(--sub)}
+.planes{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.plan-c.dest{border:2px solid var(--pri)}
+.adm-g{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.adm-t{display:flex;flex-direction:column;align-items:center;gap:2px;border:2px solid transparent;cursor:pointer;font:inherit;text-align:center}.adm-t.on{border-color:var(--pri)}.adm-t small{font-size:12px;color:var(--sub)}
+@media(max-width:560px){.adm-g{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .color-chip.on{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--txt)}
 .hc-sec{background:#fff;border:1px solid var(--line);border-radius:12px;padding:4px 12px 10px;margin-top:10px}
 .hc-sec summary{cursor:pointer;font-weight:800;color:var(--pri);padding:8px 0;font-size:14px}
@@ -201,7 +204,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.6';
+const VERSION = '3.7';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -260,6 +263,8 @@ function mensajeError(e){
   if (/largos/i.test(m)) return 'Algún texto del perfil es demasiado largo';
   if (/OperationError/i.test(m)) return 'Clave incorrecta';
   if (/pago_valido/i.test(m)) return 'El enlace de pago debe empezar por https://';
+  if (/row-level security/i.test(m) && S.prof && diasRestantes() < 0) return 'Tu suscripción venció. Renueva en Más → Mi suscripción para crear citas y pacientes';
+  if (/No autorizado/i.test(m)) return 'No autorizado';
   if (/Bucket not found/i.test(m)) return 'Falta ejecutar la actualización v3 de la base de datos';
   if (/relation .* does not exist|schema cache/i.test(m)) return 'Falta ejecutar la actualización v3 de la base de datos';
   if (/Failed to fetch|NetworkError/i.test(m)) return 'Sin conexión. Revisa tu internet';
@@ -591,12 +596,13 @@ async function abrirPanel(){
   const { data, error } = await sb.from('profesionales').select('*').single();
   if (error || !data) { toast(mensajeError(error), true); pantallaAcceso('entrar'); return; }
   S.prof = data; reiniciarInactividad();
+  S.admin = false; sb.rpc('es_admin').then(r => { S.admin = !!(r && r.data === true); }).catch(() => {});
   S.vista = 'inicio';
   pintarPanel();
   if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 600);
 }
 
-function diasRestantes(){ const d = Math.round((new Date(S.prof.activo_hasta + 'T23:59:59') - new Date()) / 86400000); return d; }
+function diasRestantes(){ return Math.round((Date.parse(S.prof.activo_hasta) - Date.parse(hoyYMD())) / 864e5); }
 function enlaceReservas(){ return location.origin + location.pathname + '?p=' + S.prof.slug; }
 
 function pintarPanel(){
@@ -622,7 +628,7 @@ function irA(v, sinHistoria){
   if ($('vista')) $('vista').classList.remove('ancha');
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (GRUPO[v] || v)));
   ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, finanzas: vistaFinanzas, mas: vistaMas, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil,
-     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia, seguridad: vistaSeguridad, legal: vistaLegal })[v]();
+     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia, seguridad: vistaSeguridad, legal: vistaLegal, suscripcion: vistaSuscripcion, admin: vistaAdmin })[v]();
   window.scrollTo(0, 0); actualizarAtras();
 }
 
@@ -677,6 +683,7 @@ async function vistaInicio(){
     <div class="kpi"><b>${esc(peso(ingresos))}</b><span>Cobrado este mes</span></div>
     <div class="kpi" onclick="irA('pacientes')"><b>${nPac}</b><span>Pacientes</span></div></div>`;
   const nHab = hb.error ? 0 : hb.count ?? (hb.data || []).length, nEsp = le.error ? 0 : le.count ?? (le.data || []).length;
+  h += avisoSuscripcion();
   if ('contrato_encargado_at' in p && !p.contrato_encargado_at) h += `<div class="aviso warn" style="cursor:pointer" onclick="irA('legal')">📄 Revisa y acepta el <b>contrato de tratamiento de datos</b> con LV Studio (Ley 1581). Toca aquí.</div>`;
   if (nHab) h += `<div class="aviso err" style="cursor:pointer" onclick="irA('habeas')">🛡️ Tienes <b>${nHab}</b> solicitud${nHab > 1 ? 'es' : ''} de datos sin responder. La ley da 10 a 15 días hábiles. Toca para verla${nHab > 1 ? 's' : ''}.</div>`;
   if (nEsp) h += `<div class="aviso info" style="cursor:pointer" onclick="irA('espera')">⏳ <b>${nEsp}</b> persona${nEsp > 1 ? 's' : ''} en lista de espera. Toca para verla${nEsp > 1 ? 's' : ''}.</div>`;
@@ -722,8 +729,7 @@ async function vistaAgenda(){
   const p = S.prof, v = $('vista'), dr = diasRestantes();
   v.classList.add('ancha');
   let top = '';
-  if (dr < 0) top += `<div class="aviso err">Tu suscripción venció. Tu página de reservas está oculta. Tus datos siguen guardados y seguros. Escribe a LV Studio para renovar.</div>`;
-  else if (dr <= 5) top += `<div class="aviso warn">Te quedan <b>${dr} día(s)</b> de suscripción.</div>`;
+  top += avisoSuscripcion();
   if (!p.slug || !p.nombre) top += `<div class="aviso warn">Completa tu <b>Perfil</b> para activar tu página de reservas.</div>`;
   v.innerHTML = top + `<div class="agenda-l"><aside id="ag-izq"></aside><section id="ag-cen"><div class="carga">Cargando agenda…</div></section></div>`;
   await cargarAgenda();
@@ -1625,7 +1631,7 @@ function exportarHistoria(){
 /* =========================================================
    v3 · MÁS, FINANZAS, ESPERA, RESEÑAS, PLANTILLAS, ADJUNTOS, HABEAS
    ========================================================= */
-const GRUPO = { seguridad: 'mas', legal: 'mas', guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
+const GRUPO = { suscripcion: 'mas', admin: 'mas', seguridad: 'mas', legal: 'mas', guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
 function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = azar(16); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128; const h = [...b].map(x => x.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
 function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
 function urlPublica(q){ return location.origin + location.pathname + q; }
@@ -2083,6 +2089,109 @@ function oscurecer(hex, f){ const n = parseInt(hex.slice(1), 16), c = [n >> 16, 
 function aplicarColor(c){ if (!colorValido(c)) return; document.documentElement.style.setProperty('--pri', c); document.documentElement.style.setProperty('--pri2', oscurecer(c, .35)); }
 function elegirColor(c){ $('p-color').value = c; document.querySelectorAll('.color-chip').forEach(x => x.classList.toggle('on', x.dataset.c === c)); $('p-color-prev').style.background = `linear-gradient(135deg,${c},${oscurecer(c, .35)})`; }
 
+/* =========================================================
+   v9 · SUSCRIPCIÓN Y ADMINISTRACIÓN
+   ========================================================= */
+const PLANES_BASE = [{ id: 'mensual', nombre: 'Mensual', meses: 1, valor: 39000 }, { id: 'semestral', nombre: 'Semestral', meses: 6, valor: 199000 }, { id: 'anual', nombre: 'Anual', meses: 12, valor: 349000 }];
+const WA_LV = '573202903722';
+const pesos = n => '$' + Number(n || 0).toLocaleString('es-CO');
+function fechaCorta(ymd){ return new Date(ymd + 'T12:00:00Z').toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
+function avisoSuscripcion(){
+  const dr = diasRestantes();
+  if (dr < 0) return `<div class="aviso err" style="cursor:pointer" onclick="irA('suscripcion')">⛔ <b>Tu suscripción venció.</b> Tu página de reservas está oculta y no puedes crear citas ni pacientes. Tus datos siguen guardados y seguros. <b>Toca aquí para renovar.</b></div>`;
+  if (dr <= 5) return `<div class="aviso warn" style="cursor:pointer" onclick="irA('suscripcion')">⏳ ${dr === 0 ? 'Tu suscripción <b>vence hoy</b>' : `Te quedan <b>${dr} día(s)</b> de suscripción`}. <b>Toca aquí para renovar.</b></div>`;
+  return '';
+}
+async function vistaSuscripcion(){
+  const v = $('vista'); v.innerHTML = `<h2>💳 Mi suscripción</h2><div id="sus-c"><div class="carga">Cargando…</div></div>`;
+  const [pl, rn] = await Promise.all([sb.rpc('planes'), sb.from('renovaciones').select('*').order('created_at', { ascending: false })]);
+  const box = $('sus-c'); if (!box) return;
+  S.planes = (pl && !pl.error && Array.isArray(pl.data)) ? pl.data : PLANES_BASE;
+  const ren = (rn && !rn.error && rn.data) || [], pend = ren.find(r => r.estado === 'pendiente'), pagos = ren.filter(r => r.estado === 'aprobada').length;
+  const dr = diasRestantes(), venc = dr < 0;
+  const mens = S.planes.find(x => x.meses === 1) || PLANES_BASE[0];
+  box.innerHTML = `<div class="card"><div class="row"><h3 class="grow" style="margin:0">${pagos ? 'Plan Profesional' : 'Prueba gratis'}</h3>
+      <span class="badge ${venc ? 'b-bad' : dr <= 5 ? 'b-pend' : 'b-ok'}">${venc ? 'Vencida' : 'Activa'}</span></div>
+    <p style="font-size:15px;margin:10px 0 0">${venc ? 'Venció el' : 'Activa hasta el'} <b>${esc(fechaCorta(S.prof.activo_hasta))}</b>${venc ? '' : ` · ${dr === 0 ? 'vence hoy' : dr + ' día(s)'}`}</p>
+    ${venc ? `<p class="mini">Tu página de reservas está oculta y no puedes crear citas ni pacientes. Puedes consultar y exportar todo.</p>` : ''}</div>
+  ${pend ? `<div class="aviso info">🕓 Recibimos tu pago del plan <b>${esc(pend.plan)}</b> (${pesos(pend.valor)}) el ${esc(fecha(pend.created_at, { dateStyle: 'medium' }))}. Lo activamos en pocas horas, después de confirmarlo.
+      <div style="margin-top:8px"><a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${WA_LV}?text=${encodeURIComponent(`Hola LV Studio, ya pagué Consulta LV plan ${pend.plan} (${pesos(pend.valor)}). Mi correo: ${S.prof.email}. Te envío el comprobante.`)}">Enviar comprobante por WhatsApp</a></div></div>` : ''}
+  <h3 style="margin:18px 0 8px">${pend ? 'Planes' : 'Renueva tu plan'}</h3>
+  <div class="planes">${S.planes.map(x => { const ahorro = Math.round((1 - x.valor / (mens.valor * x.meses)) * 100);
+    return `<div class="card plan-c ${x.meses === 12 ? 'dest' : ''}">${x.meses === 12 ? '<span class="badge b-ok" style="float:right">Más conveniente</span>' : ''}
+      <b style="font-size:16px">${esc(x.nombre)}</b><div style="font-size:26px;font-weight:800;margin:4px 0">${pesos(x.valor)}</div>
+      <div class="mini">${x.meses === 1 ? 'Cada mes' : `${x.meses} meses · ${pesos(Math.round(x.valor / x.meses))}/mes${ahorro > 0 ? ` · ahorras ${ahorro}%` : ''}`}</div>
+      <button class="btn full ${x.meses === 12 ? '' : 'ghost'}" style="margin-top:10px" ${pend ? 'disabled' : ''} onclick="pagarPlan('${x.id}')">Elegir ${esc(x.nombre.toLowerCase())}</button></div>`; }).join('')}</div>
+  <p class="mini">Incluye todo: pacientes y citas ilimitados, página de reservas, historia clínica y pruebas cifradas, recordatorios y soporte. Los días que te queden se suman al nuevo plan.</p>
+  ${ren.length ? `<div class="card"><h3>Historial de pagos</h3>${ren.map(r => `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--borde,#e2e8f0);font-size:14px"><span class="grow">${esc(fecha(r.created_at, { dateStyle: 'medium' }))} · ${esc(r.plan)} · ${pesos(r.valor)}${r.hasta ? `<br><small class="sub">Activo hasta ${esc(fechaCorta(r.hasta))}</small>` : ''}${r.nota ? `<br><small class="sub">${esc(r.nota)}</small>` : ''}</span>
+    <span class="badge ${r.estado === 'aprobada' ? 'b-ok' : r.estado === 'rechazada' ? 'b-bad' : 'b-pend'}">${r.estado === 'aprobada' ? 'Aprobado' : r.estado === 'rechazada' ? 'Rechazado' : 'En revisión'}</span></div>`).join('')}</div>` : ''}`;
+}
+function pagarPlan(id){
+  const x = (S.planes || PLANES_BASE).find(p => p.id === id); if (!x) return;
+  const msg = `Hola LV Studio, quiero pagar Consulta LV plan ${x.nombre} (${pesos(x.valor)}). Mi correo: ${S.prof.email}`;
+  abrirModal(`<h3>💳 Plan ${esc(x.nombre)} · ${pesos(x.valor)}</h3>
+  <p style="font-size:15px;line-height:1.6"><b>1.</b> Escríbenos por WhatsApp y te enviamos los datos de pago por <b>Nequi o Bancolombia</b>.</p>
+  <a class="btn full" style="background:#16a34a" target="_blank" rel="noopener" href="https://wa.me/${WA_LV}?text=${encodeURIComponent(msg)}">💬 Pedir datos de pago por WhatsApp</a>
+  <p style="font-size:15px;line-height:1.6;margin-top:14px"><b>2.</b> Cuando pagues, escribe el número o referencia del comprobante y toca <b>Ya pagué</b>. Lo activamos apenas lo confirmemos.</p>
+  <label>Referencia del comprobante (opcional)</label><input id="ren-ref" maxlength="80" placeholder="Ej: M1234567">
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="ren-btn" onclick="informarPago('${x.id}')">Ya pagué</button></div></div>`);
+}
+async function informarPago(id){
+  const b = $('ren-btn'); if (b.disabled) return; b.disabled = true;
+  const { error } = await sb.from('renovaciones').insert({ plan: id, referencia: ($('ren-ref').value || '').trim().slice(0, 80) });
+  if (error) { b.disabled = false; toast(/una_pendiente|duplicate/i.test(error.message || '') ? 'Ya tienes un pago en revisión' : /renovaciones|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v9 de la base de datos' : mensajeError(error), true); return; }
+  cerrarModal(); toast('¡Gracias! Revisaremos tu pago y lo activaremos pronto ✅'); vistaSuscripcion();
+}
+
+/* --- PANEL DEL ADMINISTRADOR (LV Studio) --- */
+const ADM = { datos: null, filtro: '', ver: 'todos' };
+async function vistaAdmin(){
+  const v = $('vista'); v.innerHTML = `<h2>👑 Administración</h2><div id="adm-c"><div class="carga">Cargando…</div></div>`;
+  const { data, error } = await sb.rpc('admin_resumen');
+  if (error) { $('adm-c').innerHTML = `<div class="aviso err">No autorizado o falta la actualización v9.</div>`; return; }
+  ADM.datos = data; pintarAdmin();
+}
+function pintarAdmin(){
+  const box = $('adm-c'); if (!box || !ADM.datos) return;
+  const hoy = hoyYMD(), d = ADM.datos, ps = d.profesionales || [];
+  const dias = p => Math.round((Date.parse(p.activo_hasta) - Date.parse(hoy)) / 864e5);
+  const tipo = p => dias(p) < 0 ? 'vencidos' : p.pagos > 0 ? 'pagos' : 'prueba';
+  const n = k => ps.filter(p => tipo(p) === k).length, porVencer = ps.filter(p => dias(p) >= 0 && dias(p) <= 5).length;
+  const f = ADM.filtro.toLowerCase();
+  const lista = ps.filter(p => (ADM.ver === 'todos' || (ADM.ver === 'vencer' ? dias(p) >= 0 && dias(p) <= 5 : tipo(p) === ADM.ver)) && (!f || `${p.nombre} ${p.email} ${p.ciudad}`.toLowerCase().includes(f)));
+  const tile = (k, t, val, c) => `<button class="card adm-t ${ADM.ver === k ? 'on' : ''}" onclick="ADM.ver='${k}';pintarAdmin()"><b style="font-size:24px;color:${c}">${val}</b><small>${t}</small></button>`;
+  box.innerHTML = `<div class="adm-g">${tile('pagos', 'Pagando', n('pagos'), '#059669')}${tile('prueba', 'En prueba', n('prueba'), '#2563eb')}${tile('vencer', 'Vencen en 5 días', porVencer, '#d97706')}${tile('vencidos', 'Vencidos', n('vencidos'), '#dc2626')}</div>
+  <div class="card row"><span class="grow">💰 Ingresos del mes<br><small class="sub">Total histórico: ${pesos(d.ingresos_total)}</small></span><b style="font-size:22px">${pesos(d.ingresos_mes)}</b></div>
+  ${(d.pendientes || []).length ? `<div class="card" style="border:2px solid #f59e0b"><h3>🕓 Pagos por confirmar (${d.pendientes.length})</h3>${d.pendientes.map(r => `<div style="padding:10px 0;border-bottom:1px solid #e2e8f0">
+      <b>${esc(r.nombre || 'Sin nombre')}</b> · <span class="sub">${esc(r.email)}</span><br>
+      Plan <b>${esc(r.plan)}</b> · <b>${pesos(r.valor)}</b> · Ref: ${esc(r.referencia || '—')}<br><small class="sub">${esc(fecha(r.created_at, { dateStyle: 'medium', timeStyle: 'short' }))} · vence ${esc(r.activo_hasta)}</small>
+      <div class="fila" style="margin-top:8px"><button class="btn sm red" onclick="resolverPago('${r.id}',false)">Rechazar</button><button class="btn sm" onclick="resolverPago('${r.id}',true)">✅ Aprobar</button></div></div>`).join('')}</div>` : ''}
+  <div class="card"><div class="row"><h3 class="grow" style="margin:0">Profesionales (${lista.length})</h3>${ADM.ver !== 'todos' ? `<button class="btn sm ghost" onclick="ADM.ver='todos';pintarAdmin()">Ver todos</button>` : ''}</div>
+  <input placeholder="🔎 Buscar por nombre, correo o ciudad" value="${esc(ADM.filtro)}" oninput="ADM.filtro=this.value;clearTimeout(ADM.t);ADM.t=setTimeout(()=>{pintarAdmin();const i=document.querySelector('#adm-c input');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},250)" style="margin:10px 0">
+  ${lista.map(p => { const dd = dias(p), t = tipo(p);
+    return `<div style="padding:10px 0;border-bottom:1px solid #e2e8f0"><div class="row"><span class="grow"><b>${esc(p.nombre || 'Sin nombre')}</b>${p.ciudad ? ` · <span class="sub">${esc(p.ciudad)}</span>` : ''}<br><small class="sub">${esc(p.email)}</small></span>
+      <span class="badge ${dd < 0 ? 'b-bad' : dd <= 5 ? 'b-pend' : t === 'pagos' ? 'b-ok' : 'b-conf'}">${dd < 0 ? 'Vencido' : t === 'pagos' ? 'Pagando' : 'Prueba'} · ${dd < 0 ? 'hace ' + (-dd) + ' d' : dd + ' d'}</span></div>
+      <small class="sub">Hasta ${esc(p.activo_hasta)} · ${p.pacientes} pacientes · ${p.citas_mes} citas (30 d) · ${p.pagos} pago(s)</small>
+      <div class="fila" style="margin-top:6px;flex-wrap:wrap">
+        ${p.whatsapp ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.whatsapp)}?text=${encodeURIComponent('Hola ' + (p.nombre || '').split(' ')[0] + ', te escribo de Consulta LV (LV Studio).')}">💬 WhatsApp</a>` : ''}
+        ${p.slug ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?p=' + p.slug))}">Página</a>` : ''}
+        <button class="btn sm ghost" onclick="extenderProf('${p.id}',7)">+7 días</button><button class="btn sm ghost" onclick="extenderProf('${p.id}',30)">+30 días</button></div></div>`; }).join('') || '<p class="mini">No hay profesionales en este grupo.</p>'}</div>`;
+}
+async function resolverPago(id, ok){
+  let nota = '';
+  if (ok) { if (!confirm('¿Confirmaste que el pago llegó a tu cuenta? Se activará el plan y se enviará un correo al profesional.')) return; }
+  else { nota = prompt('Motivo del rechazo (lo verá el profesional):', 'No encontramos el pago en nuestra cuenta'); if (nota === null) return; }
+  const { data, error } = await sb.rpc('admin_resolver', { p_id: id, p_aprobar: ok, p_nota: nota });
+  if (error) { toast(mensajeError(error), true); return; }
+  toast(ok ? `Plan activado hasta ${data} ✅` : 'Pago rechazado'); vistaAdmin();
+}
+async function extenderProf(id, d){
+  if (!confirm(`¿Dar ${d} días de cortesía a este profesional?`)) return;
+  const { data, error } = await sb.rpc('admin_extender', { p_prof: id, p_dias: d });
+  if (error) { toast(mensajeError(error), true); return; }
+  toast('Activo hasta ' + data + ' ✅'); vistaAdmin();
+}
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -2118,7 +2227,9 @@ function vistaMas(){
     ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
     ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)'],
     ['seguridad','🔐','Seguridad de la cuenta','Verificación en dos pasos'],
-    ['legal','📄','Contrato y exportar mis datos','Contrato de encargado · respaldo completo']];
+    ['legal','📄','Contrato y exportar mis datos','Contrato de encargado · respaldo completo'],
+    ['suscripcion','💳','Mi suscripción','Vence el ' + fechaCorta(S.prof.activo_hasta) + ' · renovar']];
+  if (S.admin) items.unshift(['admin','👑','Administración','Profesionales, pagos y licencias (LV Studio)']);
   $('vista').innerHTML = `<h2>Más opciones</h2><div class="menu-mas">${items.map(x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`).join('')}</div>
   <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte buscando por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
   <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>`;
