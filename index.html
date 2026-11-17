@@ -212,7 +212,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.9';
+const VERSION = '3.9.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -594,7 +594,7 @@ async function guardarNuevaClave(){
   if (error) { toast(mensajeError(error), true); return; }
   toast('Contraseña actualizada ✅'); marcarActividad(); entrarConMFA();
 }
-async function salir(msg){ C.dk = null; C.priv = null; await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
+async function salir(msg){ C.dk = null; C.priv = null; try { cerrarModal(); } catch (e) {} if (typeof P === 'object') { P.actual = null; P.notas = []; P.escalas = []; P.docs = []; P.formularios = []; } await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
 
 /* --- cierre por inactividad --- */
 let tInact;

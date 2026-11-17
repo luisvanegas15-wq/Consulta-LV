@@ -1,6 +1,6 @@
 /* Consulta LV · service worker: siempre intenta la versión más nueva; sin internet usa la última guardada.
    Nunca guarda datos del servidor (Supabase) ni de otros sitios. */
-const CACHE = 'consulta-lv-v3';
+const CACHE = 'consulta-lv-v4';
 const BASE = ['./', './index.html', './supabase.js', './manifest.json', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
