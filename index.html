@@ -78,6 +78,7 @@ textarea{min-height:90px;resize:vertical}
 nav button{font-size:10.5px}
 .menu-mas{display:flex;flex-direction:column;gap:8px}
 .menu-mas .badge{white-space:nowrap}
+.medio{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}.medio.on{border-color:var(--pri);background:#f0fdfa}.medio-c{display:none;margin-top:4px}.medio.on .medio-c{display:block}
 .mas-g{font-size:13px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:18px 4px 8px}
 .menu-mas button{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:left;cursor:pointer;color:var(--txt);font-size:14px}
 .menu-mas i{font-style:normal;font-size:24px}.menu-mas small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
@@ -212,7 +213,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.9.1';
+const VERSION = '3.10';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -1030,12 +1031,9 @@ function vistaPerfil(){
   <label>Sobre mí</label><textarea id="p-bio" maxlength="1200" style="min-height:130px" placeholder="Cuéntale al paciente cómo trabajas, qué puede esperar de la primera sesión y por qué elegirte.">${esc(p.bio)}</textarea>
   <label>Formación</label><textarea id="p-form" maxlength="800" placeholder="Psicóloga, Universidad ... · Especialista en ... · Diplomado en ...">${esc(p.formacion)}</textarea></div>
 
-  <div class="card"><h3>Atención y pagos</h3>
+  ${htmlMediosForm(p)}
+  <div class="card"><h3>Atención y avisos</h3>
   <label>Dirección del consultorio (si atiendes presencial)</label><input id="p-dir" maxlength="150" value="${esc(p.direccion)}">
-  <label>Número Nequi o Daviplata (opcional)</label><input id="p-nequi" maxlength="15" inputmode="tel" value="${esc(p.nequi)}">
-  <label>Otros datos de pago (opcional)</label><textarea id="p-dpago" maxlength="300" style="min-height:60px" placeholder="Ej: Bancolombia ahorros 000-000000-00 a nombre de Ana Gómez · Llave Bre-B: @anagomez">${esc(p.datos_pago || '')}</textarea>
-  <label>Enlace de pago en línea (opcional)</label><input id="p-epago" maxlength="300" value="${esc(p.enlace_pago || '')}" placeholder="https://… (Bold, Wompi, Mercado Pago)">
-  <p class="mini">Crea un link de cobro gratis en Bold, Wompi o Mercado Pago y pégalo aquí: tus pacientes pagan con tarjeta o PSE y el dinero llega directo a tu cuenta.</p>
   <label class="check"><input type="checkbox" id="p-rec-on" ${p.recordatorios_email !== false ? 'checked' : ''}><span><b>Recordatorio automático por correo</b> a tus pacientes 24 horas antes de la cita (solo a quienes tengan correo registrado).</span></label>
   <label class="check"><input type="checkbox" id="p-dir-on" ${p.en_directorio ? 'checked' : ''}><span><b>Aparecer en el directorio de Consulta LV</b> para que nuevos pacientes me encuentren por tema y ciudad. <a href="${esc(urlPublica('?dir=1'))}" target="_blank" rel="noopener">Ver directorio</a></span></label>
   <label>Tu enlace de reservas</label><input id="p-slug" maxlength="40" value="${esc(p.slug || '')}" placeholder="ej: ana-gomez-psicologa" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
@@ -1048,13 +1046,16 @@ function vistaPerfil(){
   $('p-slug').addEventListener('input', e => $('p-prev').textContent = e.target.value || 'tu-nombre');
 }
 async function guardarPerfil(){
+  const MP = leerMedios();
+  if (MP.err.length) { toast(MP.err[0], true); const k = document.querySelector('.medio.on'); return; }
   const d = { nombre: $('p-nombre').value.trim(), titulo: $('p-titulo').value.trim(), tarjeta_profesional: $('p-tp').value.trim(),
     ciudad: $('p-ciudad').value.trim(), whatsapp: soloDigitos($('p-wa').value), bio: $('p-bio').value.trim(),
     enfoque: $('p-enfoque').value.trim(), experiencia_anios: Math.max(0, Math.min(70, parseInt($('p-exp').value, 10) || 0)),
     idiomas: $('p-idiomas').value.trim(), poblacion: $('p-pob').value.trim(), especialidades: $('p-esp').value.trim(),
     formacion: $('p-form').value.trim(),
-    direccion: $('p-dir').value.trim(), nequi: soloDigitos($('p-nequi').value),
-    datos_pago: $('p-dpago').value.trim(), ...('color_marca' in S.prof ? { color_marca: $('p-color').value } : {}), enlace_pago: $('p-epago').value.trim(), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
+    direccion: $('p-dir').value.trim(), nequi: MP.m.nequi && MP.m.nequi.on ? soloDigitos(MP.m.nequi.num) : '',
+    datos_pago: textoPagoDe(MP.m, true).join(' · ').slice(0, 300), ...('color_marca' in S.prof ? { color_marca: $('p-color').value } : {}), enlace_pago: MP.m.pse && MP.m.pse.on ? MP.m.pse.url : '',
+    ...('medios_pago' in S.prof ? { medios_pago: MP.m } : {}), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
     slug: $('p-slug').value.trim().replace(/^-+|-+$/g, '') };
   if (d.nombre.length < 3) { toast('Escribe tu nombre completo', true); return; }
   if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
@@ -2557,6 +2558,72 @@ function htmlManana(citas){
   <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceRecordatorio(c))}">💬 Enviar</a></div>`).join('')}</div>`;
 }
 
+/* =========================================================
+   v11 · MEDIOS DE PAGO
+   ========================================================= */
+const MEDIOS = [
+  ['nequi', '📱', 'Nequi', [['num', 'Número de celular', 'tel', 15]]],
+  ['daviplata', '📲', 'Daviplata', [['num', 'Número de celular', 'tel', 15]]],
+  ['breb', '⚡', 'Bre-B', [['llave', 'Tu llave Bre-B (celular, cédula, correo o @alias)', 'text', 60]]],
+  ['bancolombia', '🏦', 'Bancolombia', [['tipo', 'Tipo de cuenta', 'tipo'], ['num', 'Número de cuenta', 'numeric', 20], ['titular', 'Titular', 'text', 80], ['doc', 'Cédula o NIT del titular', 'numeric', 15]]],
+  ['banco', '🏛️', 'Otro banco', [['banco', 'Banco (Davivienda, BBVA, Bogotá…)', 'text', 40], ['tipo', 'Tipo de cuenta', 'tipo'], ['num', 'Número de cuenta', 'numeric', 20], ['titular', 'Titular', 'text', 80], ['doc', 'Cédula o NIT del titular', 'numeric', 15]]],
+  ['pse', '💳', 'PSE o tarjeta (enlace de pago)', [['url', 'Enlace de pago https://… (Bold, Wompi, ePayco, Mercado Pago)', 'url', 300]]],
+  ['efectivo', '💵', 'Efectivo en el consultorio', []]];
+function mediosPago(p){
+  const m = (p && p.medios_pago && typeof p.medios_pago === 'object' && !Array.isArray(p.medios_pago)) ? p.medios_pago : (p && p.medios && typeof p.medios === 'object' ? p.medios : {});
+  if (Object.keys(m).length) return m;
+  const v = {};
+  if (p && p.nequi) v.nequi = { on: true, num: p.nequi };
+  if (p && /^https:\/\//.test(p.enlace_pago || '')) v.pse = { on: true, url: p.enlace_pago };
+  if (p && p.datos_pago) v.otro = { on: true, texto: p.datos_pago };
+  return v;
+}
+function lineasPago(m){
+  const L = [], s = x => String(x || '').trim();
+  for (const [k, ic, nom] of MEDIOS) {
+    const d = m[k]; if (!d || !d.on) continue;
+    if ((k === 'nequi' || k === 'daviplata') && s(d.num)) L.push({ k, ic, t: `${nom}: ${s(d.num)}`, copia: soloDigitos(d.num) });
+    else if (k === 'breb' && s(d.llave)) L.push({ k, ic, t: `Llave Bre-B: ${s(d.llave)}`, copia: s(d.llave) });
+    else if ((k === 'bancolombia' || k === 'banco') && s(d.num)) L.push({ k, ic, t: `${k === 'banco' ? s(d.banco) || 'Banco' : 'Bancolombia'} ${d.tipo === 'corriente' ? 'corriente' : 'ahorros'} ${s(d.num)}${s(d.titular) ? ' · ' + s(d.titular) : ''}${s(d.doc) ? ' · CC/NIT ' + s(d.doc) : ''}`, copia: soloDigitos(d.num) });
+    else if (k === 'pse' && /^https:\/\/[^\s"'<>]+$/i.test(s(d.url))) L.push({ k, ic, t: 'Pago en línea (PSE o tarjeta)', url: s(d.url) });
+    else if (k === 'efectivo') L.push({ k, ic, t: 'Efectivo en el consultorio' });
+  }
+  if (m.otro && m.otro.on && s(m.otro.texto)) L.push({ k: 'otro', ic: '💳', t: s(m.otro.texto) });
+  return L;
+}
+function htmlMediosForm(p){
+  const m = mediosPago(p);
+  return `<div class="card"><h3>💳 Medios de pago</h3><p class="mini" style="margin-top:0">Activa los que quieras ofrecer. Tus pacientes los verán en tu página de reservas, en el correo de recordatorio y en el mensaje de WhatsApp.</p>
+  ${MEDIOS.map(([k, ic, nom, campos]) => { const d = m[k] || {}; return `<div class="medio ${d.on ? 'on' : ''}" id="md-${k}">
+    <label class="check" style="margin:0"><input type="checkbox" id="md-on-${k}" ${d.on ? 'checked' : ''} onchange="document.getElementById('md-${k}').classList.toggle('on',this.checked)"><span><b>${ic} ${esc(nom)}</b></span></label>
+    ${campos.length ? `<div class="medio-c">${campos.map(([f, lab, tipo, max]) => tipo === 'tipo'
+      ? `<label>${esc(lab)}</label><select id="md-${k}-${f}"><option value="ahorros" ${d[f] !== 'corriente' ? 'selected' : ''}>Ahorros</option><option value="corriente" ${d[f] === 'corriente' ? 'selected' : ''}>Corriente</option></select>`
+      : `<label>${esc(lab)}</label><input id="md-${k}-${f}" maxlength="${max}" ${tipo === 'tel' ? 'inputmode="tel"' : tipo === 'numeric' ? 'inputmode="numeric"' : tipo === 'url' ? 'inputmode="url"' : ''} value="${esc(d[f] || '')}">`).join('')}
+      ${k === 'pse' ? '<p class="mini">Crea un link de cobro gratis en Bold, Wompi, ePayco o Mercado Pago y pégalo aquí: el paciente paga con PSE o tarjeta y el dinero llega a tu cuenta.</p>' : ''}
+      ${k === 'breb' ? '<p class="mini">Bre-B es el sistema de pagos inmediatos del Banco de la República: el paciente te paga desde cualquier banco o billetera con tu llave, al instante y sin costo.</p>' : ''}</div>` : ''}</div>`; }).join('')}
+  ${m.otro && m.otro.texto ? `<label>Otros datos de pago</label><textarea id="md-otro" maxlength="300" style="min-height:60px">${esc(m.otro.texto)}</textarea>` : ''}</div>`;
+}
+function leerMedios(){
+  const m = {}, err = [];
+  for (const [k, , nom, campos] of MEDIOS) {
+    const on = $('md-on-' + k).checked, d = { on };
+    for (const [f, , tipo] of campos) { let v = ($(`md-${k}-${f}`).value || '').trim(); if (tipo === 'tel' || (tipo === 'numeric')) v = v.replace(/[^\d-]/g, ''); d[f] = v; }
+    if (on) {
+      if ((k === 'nequi' || k === 'daviplata') && soloDigitos(d.num).length < 10) err.push(nom + ': escribe el número de celular');
+      if (k === 'breb' && d.llave.length < 3) err.push('Bre-B: escribe tu llave');
+      if ((k === 'bancolombia' || k === 'banco') && soloDigitos(d.num).length < 6) err.push(nom + ': escribe el número de cuenta');
+      if (k === 'banco' && !d.banco) err.push('Otro banco: escribe el nombre del banco');
+      if (k === 'pse' && !/^https:\/\/[^\s"'<>]+$/i.test(d.url)) err.push('PSE: el enlace debe empezar por https://');
+    }
+    if (on || Object.entries(d).some(([f, v]) => f !== 'on' && v)) m[k] = d;
+  }
+  const o = $('md-otro'); if (o && o.value.trim()) m.otro = { on: true, texto: o.value.trim().slice(0, 300) };
+  return { m, err };
+}
+function textoPagoDe(m, sinNequiNiPse){
+  return lineasPago(m).filter(x => !sinNequiNiPse || (x.k !== 'nequi' && x.k !== 'pse')).map(x => x.url ? x.t + ': ' + x.url : x.t);
+}
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -2622,7 +2689,7 @@ function vistaMas(){
 /* --- FINANZAS --- */
 const FIN = { mes: hoyYMD().slice(0, 7), citas: [], gastos: [] };
 const CAT_GASTO = { arriendo: '🏢 Arriendo', servicios: '💡 Servicios públicos', software: '💻 Software y apps', publicidad: '📣 Publicidad', formacion: '🎓 Formación', transporte: '🚌 Transporte', impuestos: '🧾 Impuestos', materiales: '📦 Materiales', otro: '• Otro' };
-const METODOS = { efectivo: '💵 Efectivo', nequi: '📱 Nequi / Daviplata', transferencia: '🏦 Transferencia', enlace: '💳 Tarjeta o enlace de pago' };
+const METODOS = { efectivo: '💵 Efectivo', nequi: '📱 Nequi', daviplata: '📲 Daviplata', breb: '⚡ Bre-B', bancolombia: '🏦 Bancolombia', transferencia: '🏛️ Otra transferencia', pse: '💳 PSE', enlace: '💳 Tarjeta o enlace de pago' };
 function mesSum(ym, n){ const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 7); }
 function nombreMes(ym, corto){ const [y, m] = ym.split('-').map(Number), t = MESES[m - 1]; return corto ? t.slice(0, 3) : t.charAt(0).toUpperCase() + t.slice(1) + ' ' + y; }
 const suma = (a, k) => a.reduce((s, x) => s + (x[k || 'valor'] || 0), 0);
@@ -2674,10 +2741,7 @@ async function vistaFinanzas(){
   box.innerHTML = h;
 }
 function textoPago(){
-  const p = S.prof, t = [];
-  if (p.nequi) t.push('Nequi: ' + p.nequi);
-  if (p.datos_pago) t.push(p.datos_pago);
-  if (/^https:\/\//.test(p.enlace_pago || '')) t.push('Pago en línea: ' + p.enlace_pago);
+  const t = textoPagoDe(mediosPago(S.prof), false);
   return t.length ? 'Puedes pagar por ' + t.join(' · ') + '. ' : '';
 }
 function formGasto(){
@@ -3019,12 +3083,12 @@ async function enviarEspera(){
   cerrarModal(); toast('¡Listo! Quedaste en la lista de espera ✅');
 }
 function htmlPagoPublico(p){
-  const enl = /^https:\/\/[^\s"'<>]+$/i.test(p.enlace_pago || '') ? p.enlace_pago : '';
-  if (!p.nequi && !p.datos_pago && !enl) return '';
+  const L = lineasPago(mediosPago(p)); if (!L.length) return '';
+  const pse = L.find(x => x.url), resto = L.filter(x => !x.url);
   return `<div class="card"><h3>💳 Cómo pagar</h3>
-    ${p.nequi ? `<div class="franja"><span>📱 Nequi: <b>${esc(p.nequi)}</b></span><button class="btn sm ghost" onclick="copiar('${esc(soloDigitos(p.nequi))}')">Copiar</button></div>` : ''}
-    ${p.datos_pago ? `<p style="font-size:14px;white-space:pre-wrap;margin:6px 0">${esc(p.datos_pago)}</p>` : ''}
-    ${enl ? `<a class="btn full" target="_blank" rel="noopener" href="${esc(enl)}">Pagar en línea (tarjeta, PSE)</a>` : ''}</div>`;
+    ${resto.map(x => `<div class="franja"><span style="min-width:0;overflow-wrap:anywhere">${x.ic} ${esc(x.t)}</span>${x.copia ? `<button class="btn sm ghost" onclick="copiar('${esc(x.copia)}')">Copiar</button>` : ''}</div>`).join('')}
+    ${pse ? `<a class="btn full" style="margin-top:8px" target="_blank" rel="noopener" href="${esc(pse.url)}">💳 Pagar en línea con PSE o tarjeta</a>` : ''}
+    <p class="mini">Después de pagar, envía el comprobante por WhatsApp a tu profesional.</p></div>`;
 }
 function htmlResenasPublicas(p){
   const l = p.resenas || [];
