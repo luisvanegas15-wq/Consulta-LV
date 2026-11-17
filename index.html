@@ -215,7 +215,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.11.1';
+const VERSION = '3.12';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -551,12 +551,13 @@ function pantallaAcceso(modo){
     <div class="tabs"><button class="${modo==='entrar'?'on':''}" onclick="pantallaAcceso('entrar')">Ingresar</button><button class="${modo==='crear'?'on':''}" onclick="pantallaAcceso('crear')">Crear cuenta</button></div>
     <label>Correo</label><input id="a-email" type="email" autocomplete="email" maxlength="120">
     <label>Contraseña ${modo==='crear' ? '(mínimo 10 caracteres)' : ''}</label><input id="a-pass" type="password" autocomplete="${modo==='crear'?'new-password':'current-password'}" maxlength="72">
-    ${modo==='crear' ? `<label class="check"><input type="checkbox" id="a-terminos"><span>Acepto los términos de uso y declaro que soy profesional de la psicología con tarjeta profesional vigente.</span></label>` : ''}
+    ${modo==='crear' ? `<label class="check"><input type="checkbox" id="a-terminos"><span>Acepto los <a href="terminos.html" target="_blank" rel="noopener">términos y condiciones y la política de privacidad</a> y declaro que soy profesional de la psicología con tarjeta profesional vigente.</span></label>` : ''}
     <button class="btn full" id="a-btn" onclick="${modo==='crear'?'crearCuenta()':'ingresar()'}">${modo==='crear'?'Crear cuenta · 14 días gratis':'Ingresar'}</button>
     ${modo==='entrar' ? `<button class="btn full ghost" onclick="recuperar()">Olvidé mi contraseña</button>` : ''}
   </div>
   <a class="btn full ghost" href="${esc(urlPublica('?dir=1'))}" style="margin-bottom:10px">🔎 ¿Buscas psicólogo? Ver directorio</a>
   <a class="btn full ghost" href="ventas.html" style="margin-bottom:10px">✨ ¿Qué es Consulta LV? Planes y beneficios</a>
+  <p class="mini" style="text-align:center"><a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones · Política de privacidad</a></p>
   <div class="pie">🔒 Conexión cifrada · Cada profesional ve solo a sus pacientes<br>Consulta LV v${VERSION} · LV Studio</div></div>`;
 }
 
@@ -621,7 +622,8 @@ async function abrirPanel(){
   S.admin = false; sb.rpc('es_admin').then(r => { S.admin = !!(r && r.data === true); }).catch(() => {});
   S.vista = 'inicio';
   pintarPanel();
-  if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 600);
+  if ('terminos_at' in S.prof && (!S.prof.terminos_at || S.prof.terminos_version !== TERMINOS_V)) setTimeout(pedirTerminos, 500);
+  else if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 600);
 }
 
 function diasRestantes(){ return Math.round((Date.parse(S.prof.activo_hasta) - Date.parse(hoyYMD())) / 864e5); }
@@ -1319,7 +1321,7 @@ async function abrirFicha(id, sinHistoria){
   if (err) { $('vista').innerHTML = `<div class="aviso err">${esc(mensajeError(err))}</div>`; return; }
   sb.rpc('registrar_acceso', { p_tabla: 'pacientes', p_id: id });
   P.actual = pa.data; P.citas = ci.data || [];
-  P.notas = await Promise.all((no.data || []).map(async n => Object.assign({ id: n.id, fecha: n.fecha, cita_id: n.cita_id, d: await descifrar(n.contenido_cifrado, n.iv) })));
+  P.notas = await Promise.all((no.data || []).map(async n => Object.assign({ id: n.id, fecha: n.fecha, cita_id: n.cita_id, firmada_at: n.firmada_at, created_at: n.created_at, d: await descifrar(n.contenido_cifrado, n.iv) })));
   P.escalas = await Promise.all((es.data || []).map(async n => ({ id: n.id, tipo: n.tipo, fecha: n.fecha, d: await descifrar(n.contenido_cifrado, n.iv) })));
   await cargarFormularios(id);
   pintarFicha();
@@ -1359,11 +1361,13 @@ function tabNotas(){
     return `<div class="card nota"><div class="row"><div class="grow"><b>${esc(fecha(n.fecha + 'T12:00:00Z',{weekday:'short',day:'numeric',month:'long',year:'numeric'}))}</b><div class="sub">${esc(TIPOS_NOTA[n.d.tipo] || 'Sesión')}${n.d.plantilla ? ' · 📋 ' + esc(n.d.plantilla) : ''}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
     ${camposDeNota(n.d).map(f => `<h4>${esc(f[0])}</h4><p>${esc(f[1])}</p>`).join('')}
     ${n.d.acciones_riesgo ? `<h4>Acciones frente al riesgo</h4><p>${esc(n.d.acciones_riesgo)}</p>` : ''}
-    <div class="acciones"><button class="btn sm ghost" onclick="formNota('${n.id}')">Editar</button></div></div>`;
+    ${n.d.aclara ? `<div class="sub" style="margin-top:4px">📎 Aclara ${(() => { const b = P.notas.find(x => x.id === n.d.aclara); return b ? (esHC(b) ? 'la historia de ingreso' : 'la nota del ' + esc(fecha(b.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short', year: 'numeric' }))) : 'una nota anterior'; })()}</div>` : ''}
+    <div style="margin-top:6px">${htmlFirma(n)}</div>
+    ${botonesNota(n, `<button class="btn sm ghost" onclick="formNota('${n.id}')">✏️ Editar</button>`)}</div>`;
   }).join('');
 }
 function camposDeNota(d){ return d.campos ? d.campos.filter(f => f[1]) : CAMPOS_NOTA.filter(f => d[f[0]]).map(f => [f[1], d[f[0]]]); }
-const NF = { campos: null, plantilla: '' };
+const NF = { campos: null, plantilla: '', aclara: null };
 function htmlCamposNota(d){
   if (NF.campos) return NF.campos.map((t, i) => `<label>${esc(t)}</label><textarea id="nt-c${i}" maxlength="6000">${esc(((d.campos || []).find(f => f[0] === t) || [])[1])}</textarea>`).join('');
   return CAMPOS_NOTA.map(f => `<label>${f[1]}</label><textarea id="nt-${f[0]}" maxlength="6000">${esc(d[f[0]])}</textarea>`).join('');
@@ -1375,13 +1379,39 @@ function elegirPlantilla(id){
   NF.id = id; NF.campos = pl ? pl.campos : null; NF.plantilla = pl ? pl.nombre : '';
   $('nt-campos').innerHTML = htmlCamposNota({});
 }
+/* --- HISTORIA INALTERABLE: 24 horas para corregir; después, nota aclaratoria --- */
+const H24 = 24 * 3600000;
+function notaBloqueada(n){ return !!(n && n.firmada_at && Date.now() - Date.parse(n.firmada_at) > H24); }
+function htmlFirma(n){
+  if (!n || !n.firmada_at) return n && n.d && n.d.borrador ? '<span class="sub" style="color:#d97706">📝 Borrador sin firmar</span>' : '';
+  const lim = new Date(Date.parse(n.firmada_at) + H24);
+  return notaBloqueada(n) ? `<span class="sub">🔒 Firmada el ${esc(fecha(n.firmada_at, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</span>`
+    : `<span class="sub">✍️ Firmada · puedes corregirla hasta ${esc(fecha(lim.toISOString(), { weekday: 'short', hour: 'numeric', minute: '2-digit' }))}</span>`;
+}
+function aclaracionesDe(id){ return P.notas.filter(x => x.d && x.d.aclara === id); }
+function botonesNota(n, editar){
+  const ac = aclaracionesDe(n.id);
+  return `${ac.length ? `<div class="aviso info" style="font-size:13px;margin-top:8px">📎 ${ac.length} nota(s) aclaratoria(s): ${ac.map(a => esc(fecha(a.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short' }))).join(', ')}</div>` : ''}
+  <div class="acciones">${notaBloqueada(n) ? `<button class="btn sm ghost" onclick="formNota(null,{aclara:'${n.id}'})">➕ Nota aclaratoria</button>` : editar}</div>`;
+}
+async function guardarFilaNota(id, fila, firmar){
+  const conFirma = firmar ? Object.assign({}, fila, { firmada_at: new Date().toISOString() }) : fila;
+  let r = id ? await sb.from('notas_clinicas').update(conFirma).eq('id', id) : await sb.from('notas_clinicas').insert(conFirma);
+  if (r.error && firmar && /firmada_at|schema cache/i.test(r.error.message || '')) r = id ? await sb.from('notas_clinicas').update(fila).eq('id', id) : await sb.from('notas_clinicas').insert(fila);
+  return r;
+}
 async function formNota(id, o){
   o = o || {};
-  const n = P.notas.find(x => x.id === id), d = (n && n.d) || { tipo: P.notas.some(x => !esHC(x)) || historiaActual() ? 'seguimiento' : 'primera', riesgo: 'ninguno' };
-  const pls = n ? [] : PLANT_BASE.concat(await cargarPlantillas());
+  const n = P.notas.find(x => x.id === id);
+  if (n && notaBloqueada(n)) { toast('Esta nota ya está firmada. Agrega una nota aclaratoria', true); return formNota(null, { aclara: n.id }); }
+  const base = P.notas.find(x => x.id === o.aclara);
+  const d = (n && n.d) || (o.aclara ? { tipo: 'otra', riesgo: 'ninguno', plantilla: 'Nota aclaratoria', campos: [['Qué se aclara o corrige', ''], ['Aclaración o información correcta', '']] } : { tipo: P.notas.some(x => !esHC(x)) || historiaActual() ? 'seguimiento' : 'primera', riesgo: 'ninguno' });
+  const pls = n || o.aclara ? [] : PLANT_BASE.concat(await cargarPlantillas());
+  NF.aclara = o.aclara || (n && n.d && n.d.aclara) || null;
   NF.citaId = o.citaId || null;
   NF.id = ''; NF.campos = d.campos ? d.campos.map(f => f[0]) : null; NF.plantilla = d.plantilla || '';
-  abrirModal(`<h3>${n ? 'Editar' : 'Nueva'} nota · ${esc(P.actual.nombres)}</h3>
+  abrirModal(`<h3>${o.aclara ? '➕ Nota aclaratoria' : n ? 'Editar nota' : 'Nueva nota'} · ${esc(P.actual.nombres)}</h3>
+  ${o.aclara && base ? `<div class="aviso warn" style="font-size:13px">Aclara ${esHC(base) ? 'la <b>historia clínica de ingreso</b>' : 'la nota del <b>' + esc(fecha(base.fecha + 'T12:00:00Z', { day: 'numeric', month: 'long', year: 'numeric' })) + '</b>'}. El registro original no se modifica (Res. 1995 de 1999): esta aclaración queda con su propia fecha y firma.</div>` : ''}
   <div class="aviso info" style="font-size:13px">🎙️ Puedes <b>dictar</b>: toca el micrófono de tu teclado dentro de cada campo. 🔒 La nota se cifra antes de salir de tu celular.</div>
   <div class="fila"><div><label>Fecha</label><input id="nt-fecha" type="date" value="${esc((n && n.fecha) || o.fecha || hoyYMD())}"></div>
   <div><label>Tipo</label><select id="nt-tipo">${Object.entries(TIPOS_NOTA).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div></div>
@@ -1398,12 +1428,13 @@ async function guardarNota(id){
   const d = { tipo: $('nt-tipo').value, riesgo: $('nt-riesgo').value, acciones_riesgo: $('nt-acc').value.trim() };
   if (NF.campos) { d.plantilla = NF.plantilla; d.campos = NF.campos.map((t, i) => [t, $('nt-c' + i).value.trim()]); }
   else CAMPOS_NOTA.forEach(f => d[f[0]] = $('nt-' + f[0]).value.trim());
+  if (NF.aclara) d.aclara = NF.aclara;
   if (!camposDeNota(d).length) { toast('Escribe al menos un campo', true); return; }
   if ((d.riesgo === 'alto' || d.riesgo === 'medio') && !d.acciones_riesgo) { toast('Registra las acciones realizadas frente al riesgo', true); return; }
   $('nt-btn').disabled = true;
   if (d.plantilla === 'Cierre del proceso (epicrisis)') d.tipo = 'cierre';
   const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('nt-fecha').value || hoyYMD() }, NF.citaId ? { cita_id: NF.citaId } : {}, await cifrar(d));
-  const r = id ? await sb.from('notas_clinicas').update(fila).eq('id', id) : await sb.from('notas_clinicas').insert(fila);
+  const r = await guardarFilaNota(id, fila, true);
   if (r.error) { $('nt-btn').disabled = false; toast(mensajeError(r.error), true); return; }
   NF.citaId = null; cerrarModal(); toast('Nota guardada 🔒'); P.tab = 'notas'; abrirFicha(P.actual.id);
 }
@@ -1859,10 +1890,13 @@ function tabHistoria(){
   c.innerHTML = `<div class="card nota"><div class="row"><div class="grow"><b>Historia de ingreso</b><div class="sub">${esc(fecha(h.fecha + 'T12:00:00Z', { day: 'numeric', month: 'long', year: 'numeric' }))}${h.d.borrador ? ' · <span style="color:#d97706;font-weight:700">Borrador</span>' : ''}</div></div><span class="badge ${r[1]}">${r[0]}</span></div>
     ${HC.map(([k, t, fs]) => { const vs = fs.filter(f => d[f[0]]); if (!vs.length) return ''; return `<h4>${esc(t)}</h4>` + vs.map(f => fs.length > 1 ? `<p><b>${esc(f[1])}:</b> ${esc(d[f[0]])}</p>` : `<p>${esc(d[f[0]])}</p>`).join(''); }).join('')}
     ${h.d.acciones_riesgo ? `<h4>Acciones frente al riesgo</h4><p>${esc(h.d.acciones_riesgo)}</p>` : ''}
-    <div class="acciones"><button class="btn sm ghost" onclick="formHistoria('${h.id}')">✏️ Editar</button><button class="btn sm" onclick="exportarHistoria()">📄 Generar historia clínica</button></div></div>`;
+    <div style="margin-top:6px">${htmlFirma(h)}</div>
+    ${aclaracionesDe(h.id).map(a => `<div class="aviso info" style="font-size:13px;margin-top:8px"><b>📎 Nota aclaratoria · ${esc(fecha(a.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short', year: 'numeric' }))}</b>${camposDeNota(a.d).map(f => `<br><b>${esc(f[0])}:</b> ${esc(f[1])}`).join('')}</div>`).join('')}
+    <div class="acciones">${notaBloqueada(h) ? `<button class="btn sm ghost" onclick="formNota(null,{aclara:'${h.id}'})">➕ Nota aclaratoria</button>` : `<button class="btn sm ghost" onclick="formHistoria('${h.id}')">✏️ Editar</button>`}<button class="btn sm" onclick="exportarHistoria()">📄 Generar historia clínica</button></div></div>`;
 }
 function formHistoria(id, o){
-  o = o || {}; const n = P.notas.find(x => x.id === id), d = (n && n.d && n.d.hc) || {}, p = P.actual;
+  o = o || {};
+  if (id && notaBloqueada(P.notas.find(x => x.id === id))) { toast('La historia ya está firmada. Agrega una nota aclaratoria', true); return formNota(null, { aclara: id }); } const n = P.notas.find(x => x.id === id), d = (n && n.d && n.d.hc) || {}, p = P.actual;
   NF.citaId = o.citaId || (n && n.cita_id) || null;
   abrirModal(`<h3>📋 Historia clínica · ${esc(p.nombres)}</h3>
   <div class="aviso info" style="font-size:13px">Llena lo que aplique; puedes guardar un <b>borrador</b> y completarlo después. 🎙️ Puedes dictar con el micrófono del teclado. 🔒 Todo se cifra en tu dispositivo.</div>
@@ -1890,7 +1924,7 @@ async function guardarHistoria(id, borrador){
   if ((d.riesgo === 'alto' || d.riesgo === 'medio') && !d.acciones_riesgo) { toast('Registra las acciones realizadas frente al riesgo', true); return; }
   $('hc-btn').disabled = true;
   const fila = Object.assign({ paciente_id: P.actual.id, fecha: $('hc-fecha').value || hoyYMD() }, NF.citaId ? { cita_id: NF.citaId } : {}, await cifrar(d));
-  const r = id ? await sb.from('notas_clinicas').update(fila).eq('id', id) : await sb.from('notas_clinicas').insert(fila);
+  const r = await guardarFilaNota(id, fila, !borrador);
   if (r.error) { $('hc-btn').disabled = false; toast(mensajeError(r.error), true); return; }
   NF.citaId = null; cerrarModal(); toast(borrador ? 'Borrador guardado 🔒' : 'Historia clínica guardada 🔒'); P.tab = 'historia'; abrirFicha(P.actual.id);
 }
@@ -2770,7 +2804,7 @@ async function generarInforme(){
   ${firmaProfesional()}<div class="pie">Documento confidencial. Contiene información sujeta a reserva profesional (Ley 1090 de 2006) y datos sensibles (Ley 1581 de 2012). Prohibida su divulgación sin autorización del titular.</div>`;
   if ($('in-guardar').checked) {
     const d = { tipo: tipo === 'cierre' ? 'cierre' : 'otra', riesgo: 'ninguno', plantilla: { informe: 'Informe psicológico', remision: 'Remisión / interconsulta', cierre: 'Cierre del proceso (epicrisis)' }[tipo], campos: v.filter(x => x[1]) };
-    const r = await sb.from('notas_clinicas').insert(Object.assign({ paciente_id: p.id, fecha: hoyYMD() }, await cifrar(d)));
+    const r = await guardarFilaNota(null, Object.assign({ paciente_id: p.id, fecha: hoyYMD() }, await cifrar(d)), true);
     if (r.error) toast('No se pudo guardar la copia: ' + mensajeError(r.error), true);
   }
   cerrarModal(); ventanaDoc(T + ' - ' + p.nombres, cuerpo);
@@ -2903,6 +2937,26 @@ function comprobarBloque(){
   const b = COD_TMP.split('-')[COD_BLOQUE - 1] || '', v = ($('k-rev').value || '').replace(/[^0-9a-z]/gi, '').toUpperCase();
   if (v !== b) { toast('No coincide. Revisa el bloque ' + COD_BLOQUE + ' del código que guardaste.', true); return; }
   COD_TMP = ''; toast('¡Perfecto! Tu código está bien guardado ✅'); vistaPacientes();
+}
+
+/* --- TÉRMINOS Y CONDICIONES --- */
+const TERMINOS_V = 'TyC-2026-11';
+function pedirTerminos(){
+  const nuevo = !S.prof.terminos_at;
+  abrirModal(`<h3>📜 ${nuevo ? 'Términos y condiciones' : 'Actualizamos los términos'}</h3>
+  <p style="font-size:15px;line-height:1.6">Para seguir usando Consulta LV, lee y acepta los términos del servicio y la política de privacidad de LV Studio.</p>
+  <ul style="font-size:14px;line-height:1.7;padding-left:20px"><li>Tu clave clínica solo la conoces tú: si la pierdes junto con el código de recuperación, nadie puede recuperar tus historias.</li>
+  <li>Las notas se pueden corregir durante 24 horas; después, solo con nota aclaratoria.</li><li>Tienes 5 días hábiles de retracto después de cada pago.</li><li>Tus datos son tuyos y puedes descargarlos cuando quieras.</li></ul>
+  <a class="btn full ghost" href="terminos.html" target="_blank" rel="noopener">📄 Leer los términos completos</a>
+  <label class="check"><input type="checkbox" id="tyc-ok"><span>Leí y acepto los términos y condiciones y la política de privacidad (${TERMINOS_V}).</span></label>
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="salir()">Salir</button><button class="btn full" id="tyc-b" onclick="aceptarTerminos()">Aceptar</button></div></div>`);
+}
+async function aceptarTerminos(){
+  if (!$('tyc-ok').checked) { toast('Marca la casilla para aceptar', true); return; }
+  $('tyc-b').disabled = true;
+  const { data, error } = await sb.from('profesionales').update({ terminos_at: new Date().toISOString(), terminos_version: TERMINOS_V }).eq('id', S.prof.id).select().single();
+  if (error) { $('tyc-b').disabled = false; toast(mensajeError(error), true); return; }
+  S.prof = data; cerrarModal(); toast('Gracias ✅'); if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 400);
 }
 
 /* --- CALENDARIO (Google y .ics) --- */
