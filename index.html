@@ -79,6 +79,8 @@ nav button{font-size:10.5px}
 .menu-mas{display:flex;flex-direction:column;gap:8px}
 .menu-mas .badge{white-space:nowrap}
 .medio{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0}.medio.on{border-color:var(--pri);background:#f0fdfa}.medio-c{display:none;margin-top:4px}.medio.on .medio-c{display:block}
+.sem-m .sem-d{padding:12px 14px}.sem-d.hoy{border:2px solid var(--pri)}.sem-c{border-radius:10px;padding:8px 10px;margin-top:8px;cursor:pointer;font-size:14px}.sem-c small{display:block;color:var(--sub);font-size:12px}
+.est-b{display:flex;align-items:flex-end;gap:8px;height:130px;padding-top:6px}.est-b>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;font-size:12px}.est-b i{width:70%;max-width:42px;border-radius:6px 6px 0 0;display:block}.est-b small{color:var(--sub)}
 .mas-g{font-size:13px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:18px 4px 8px}
 .menu-mas button{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:left;cursor:pointer;color:var(--txt);font-size:14px}
 .menu-mas i{font-style:normal;font-size:24px}.menu-mas small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
@@ -213,7 +215,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.10';
+const VERSION = '3.11';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -648,7 +650,7 @@ function irA(v, sinHistoria){
   if ($('vista')) $('vista').classList.remove('ancha');
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (GRUPO[v] || v)));
   ({ inicio: vistaInicio, agenda: vistaAgenda, pacientes: vistaPacientes, finanzas: vistaFinanzas, mas: vistaMas, servicios: vistaServicios, horarios: vistaHorarios, perfil: vistaPerfil,
-     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia, seguridad: vistaSeguridad, legal: vistaLegal, suscripcion: vistaSuscripcion, admin: vistaAdmin })[v]();
+     espera: vistaEspera, resenas: vistaResenas, plantillas: vistaPlantillas, habeas: vistaHabeas, guia: vistaGuia, seguridad: vistaSeguridad, legal: vistaLegal, suscripcion: vistaSuscripcion, admin: vistaAdmin, estadisticas: vistaEstadisticas })[v]();
   window.scrollTo(0, 0); actualizarAtras();
 }
 
@@ -784,7 +786,7 @@ function pintarAgenda(){
     <div class="tabs mini-tabs">${[['dia','Día'],['semana','Semana'],['lista','Lista']].map(m => `<button class="${A.modo===m[0]?'on':''}" onclick="cambiarModo('${m[0]}')">${m[1]}</button>`).join('')}</div>
     <button class="btn sm ghost" onclick="formBloqueo({fecha:A.fecha})" title="Marcar no disponible">🚫</button>
     <button class="btn sm" onclick="formCita({fecha:A.fecha})">+ Cita</button>
-  </div>${A.modo === 'lista' ? htmlLista() : htmlGrid()}</div>`;
+  </div>${A.modo === 'lista' ? htmlLista() : A.modo === 'semana' && innerWidth < 700 ? htmlSemanaMovil() : htmlGrid()}</div>`;
   if (A.modo !== 'lista') {
     const w = $('cg-wrap');
     if (w) {
@@ -898,7 +900,7 @@ function detalleCita(id){
     ${pa.telefono ? `📱 ${esc(pa.telefono)}<br>` : ''}
     ${c.origen === 'online' ? '🌐 Reservada en línea por el paciente' : '✍️ Agendada por ti'}
     ${c.confirmada_paciente_at ? `<br>✅ El paciente confirmó su asistencia (${esc(fecha(c.confirmada_paciente_at, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }))})` : ''}
-    ${c.cambio_paciente ? `<br>🔄 ${esc(c.cambio_paciente)}` : ''}
+    ${c.cambio_paciente ? `<br>🔄 ${esc(c.cambio_paciente)}` : ''}${c.paquete_id ? '<br>📦 Descontada de un paquete de sesiones' : ''}
   </div>
   <div class="acciones">
     ${c.estado === 'pendiente' ? `<button class="btn sm" onclick="estadoCita('${c.id}','confirmada')">✓ Confirmar</button>` : ''}
@@ -909,6 +911,7 @@ function detalleCita(id){
     <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceGoogleCal('Cita: ' + (pa.nombres || 'Paciente'), c.inicio, c.fin, (c.servicios || {}).nombre || '', ''))}">📅 A mi calendario</a>
     <button class="btn sm ${c.pagado ? '' : 'ghost'}" onclick="${c.pagado ? `pagoCita('${c.id}',false)` : `elegirPago('${c.id}')`}">${c.pagado ? '✓ Pagada' : '💵 Marcar pagada'}</button>
     ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="pedirResena('${c.id}')">⭐ Pedir reseña</button>` : ''}
+    ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="cerrarModal();formConstancia('${c.paciente_id}','${c.id}')">🧾 Constancia</button>` : ''}
   </div>
   ${activa ? `<div class="acciones"><button class="btn sm ghost" onclick="estadoCita('${c.id}','asistio')">Asistió</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','no_asistio')">No asistió</button><button class="btn sm red" onclick="estadoCita('${c.id}','cancelada')">Cancelar cita</button></div>
     ${c.serie ? `<button class="btn sm red" style="margin-top:6px" onclick="cancelarSerie('${c.serie}','${c.inicio}')">Cancelar esta y las siguientes de la serie</button>` : ''}` : ''}
@@ -1034,6 +1037,7 @@ function vistaPerfil(){
   ${htmlMediosForm(p)}
   <div class="card"><h3>Atención y avisos</h3>
   <label>Dirección del consultorio (si atiendes presencial)</label><input id="p-dir" maxlength="150" value="${esc(p.direccion)}">
+  ${'horas_cancelacion' in p ? `<label>Tus pacientes pueden cancelar o reprogramar en línea hasta</label><select id="p-hcan">${[[0, 'Hasta la hora de la cita'], [2, '2 horas antes'], [6, '6 horas antes'], [12, '12 horas antes'], [24, '24 horas antes'], [48, '48 horas antes']].map(([h, t]) => `<option value="${h}" ${+p.horas_cancelacion === h ? 'selected' : ''}>${t}</option>`).join('')}</select><p class="mini">Después de ese límite el paciente debe escribirte. Siempre puede confirmar su asistencia.</p>` : ''}
   <label class="check"><input type="checkbox" id="p-rec-on" ${p.recordatorios_email !== false ? 'checked' : ''}><span><b>Recordatorio automático por correo</b> a tus pacientes 24 horas antes de la cita (solo a quienes tengan correo registrado).</span></label>
   <label class="check"><input type="checkbox" id="p-dir-on" ${p.en_directorio ? 'checked' : ''}><span><b>Aparecer en el directorio de Consulta LV</b> para que nuevos pacientes me encuentren por tema y ciudad. <a href="${esc(urlPublica('?dir=1'))}" target="_blank" rel="noopener">Ver directorio</a></span></label>
   <label>Tu enlace de reservas</label><input id="p-slug" maxlength="40" value="${esc(p.slug || '')}" placeholder="ej: ana-gomez-psicologa" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
@@ -1055,7 +1059,7 @@ async function guardarPerfil(){
     formacion: $('p-form').value.trim(),
     direccion: $('p-dir').value.trim(), nequi: MP.m.nequi && MP.m.nequi.on ? soloDigitos(MP.m.nequi.num) : '',
     datos_pago: textoPagoDe(MP.m, true).join(' · ').slice(0, 300), ...('color_marca' in S.prof ? { color_marca: $('p-color').value } : {}), enlace_pago: MP.m.pse && MP.m.pse.on ? MP.m.pse.url : '',
-    ...('medios_pago' in S.prof ? { medios_pago: MP.m } : {}), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
+    ...('medios_pago' in S.prof ? { medios_pago: MP.m } : {}), ...($('p-hcan') ? { horas_cancelacion: +$('p-hcan').value } : {}), en_directorio: $('p-dir-on').checked, recordatorios_email: $('p-rec-on').checked,
     slug: $('p-slug').value.trim().replace(/^-+|-+$/g, '') };
   if (d.nombre.length < 3) { toast('Escribe tu nombre completo', true); return; }
   if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
@@ -1183,13 +1187,14 @@ async function crearLlave(){
   } catch (e) { b.disabled = false; b.textContent = 'Crear clave'; toast(mensajeError(e), true); }
 }
 function mostrarCodigo(cod){
+  COD_TMP = cod;
   $('vista').innerHTML = `<h2>📄 Tu código de recuperación</h2><div class="card">
   <div class="aviso err"><b>Guárdalo ahora.</b> Es la única forma de recuperar tus historias si olvidas tu clave. No lo volveremos a mostrar y LV Studio no lo conoce.</div>
   <div class="clave">${esc(cod)}</div>
   <div class="acciones" style="justify-content:center"><button class="btn sm ghost" onclick="copiar('${cod}')">Copiar</button></div>
   <p class="mini">Escríbelo en papel o guárdalo en un gestor de contraseñas. No lo envíes por WhatsApp ni correo.</p>
   <label class="check"><input type="checkbox" id="k-ok"><span>Ya guardé mi código de recuperación en un lugar seguro.</span></label>
-  <button class="btn full" onclick="if($('k-ok').checked){vistaPacientes()}else{toast('Confirma que guardaste el código',true)}">Continuar</button></div>`;
+  <button class="btn full" onclick="pasoVerificarCodigo()">Continuar</button></div>`;
 }
 function pantallaDesbloqueo(){
   $('vista').innerHTML = `<h2>🔐 Historias clínicas bloqueadas</h2><div class="card">
@@ -1324,6 +1329,8 @@ function pintarFicha(){
       <button class="btn sm ghost" onclick="formCita({pacId:P.actual.id,nombre:P.actual.nombres,volver:'ficha'})">📅 Agendar</button>
       ${p.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(p.telefono)}">💬</a>` : ''}
       <button class="btn sm ghost" onclick="exportarHistoria()">📄 Historia clínica</button>
+      <button class="btn sm ghost" onclick="formInforme()">📑 Informe</button>
+      <button class="btn sm ghost" onclick="formConstancia(P.actual.id)">🧾 Constancia</button>
     </div></div>
   <div class="tabs">${[['historia','Historia' + (historiaActual() ? '' : ' ⚠️')],['notas','Evolución (' + P.notas.filter(n => !esHC(n)).length + ')'],['escalas','Pruebas'],['archivos','Archivos'],['citas','Citas'],['datos','Datos']].map(t => `<button class="${P.tab===t[0]?'on':''}" onclick="P.tab='${t[0]}';pintarFicha()">${t[1]}</button>`).join('')}</div>
   <div id="ficha-c"></div>`;
@@ -1538,6 +1545,7 @@ function tabEscalas(){
     const e = ESCALAS[tipo], ult = l[l.length - 1], pri = l[0], dif = ult.d.total - pri.d.total;
     return `<div class="card"><h3>${e.nombre}</h3>
     <div class="sub" style="margin-bottom:10px">Última: ${e.max ? `<b>${ult.d.total}/${e.max}</b> · ` : ''}${esc(ult.d.nivel)}${l.length > 1 && e.max ? ` · ${dif < 0 ? '📉 bajó ' + (-dif) : dif > 0 ? '📈 subió ' + dif : '➖ igual'} desde la primera` : ''}</div>
+    ${graficaEscala(tipo, l)}
     ${l.map(x => { const n = nivelGuardado(tipo, x.d); return `<div style="margin-bottom:8px"><div class="row" style="font-size:13px;margin-bottom:3px;flex-wrap:wrap;gap:4px 8px"><span class="grow" style="white-space:nowrap">${esc(fecha(x.fecha + 'T12:00:00Z',{day:'numeric',month:'short',year:'numeric'}))}${e.max ? ` · <b>${x.d.total}</b>` : ''}</span><span class="badge ${n[1]}">${esc(n[0])}</span></div>
       ${e.max ? `<div class="barra"><div style="width:${Math.round(x.d.total / e.max * 100)}%;background:${n[1]==='b-ok'?'#10b981':n[1]==='b-conf'?'#3b82f6':n[1]==='b-pend'?'#f59e0b':'#ef4444'}"></div></div>` : ''}
       ${tipo === 'PHQ-9' && x.d.respuestas[8] > 0 ? `<div class="sub" style="color:var(--bad)">⚠️ Ítem 9 positivo (${x.d.respuestas[8]})</div>` : ''}${x.d.obs ? `<div class="sub">${esc(x.d.obs)}</div>` : ''}</div>`; }).join('')}</div>`;
@@ -1550,10 +1558,11 @@ function tabEscalas(){
 /* --- CITAS DEL PACIENTE --- */
 function tabCitas(){
   const c = $('ficha-c');
-  c.innerHTML = P.citas.length ? P.citas.map(x => { const e = ESTADOS[x.estado] || ['', 'b-gris'];
+  c.innerHTML = '<div id="paq-f"></div>' + (P.citas.length ? P.citas.map(x => { const e = ESTADOS[x.estado] || ['', 'b-gris'];
     return `<div class="card"><div class="row"><div class="grow"><b>${esc(fecha(x.inicio,{weekday:'short',day:'numeric',month:'short',year:'numeric'}))} · ${esc(hora(x.inicio))}</b>
     <div class="sub">${esc((x.servicios && x.servicios.nombre) || 'Cita')}${x.valor ? ' · ' + peso(x.valor) : ''} · ${x.pagado ? '✓ pagada' : 'sin pago'}</div></div><span class="badge ${e[1]}">${e[0]}</span></div></div>`; }).join('')
-    : `<div class="empty">Sin citas. Usa "📅 Agendar".</div>`;
+    : `<div class="empty">Sin citas. Usa "📅 Agendar".</div>`);
+  htmlPaquetesFicha();
 }
 async function formCita(o){
   o = o || {};
@@ -1573,12 +1582,20 @@ async function formCita(o){
   <div class="fila"><div><label>Repetir</label><select id="ct-rep" onchange="$('ct-n-box').style.visibility=this.value==='0'?'hidden':'visible'"><option value="0">No se repite</option><option value="7">Cada semana</option><option value="14">Cada 2 semanas</option><option value="28">Cada 4 semanas</option></select></div>
   <div id="ct-n-box" style="visibility:hidden"><label>N.º de sesiones</label><input id="ct-n" type="number" min="2" max="24" value="8"></div></div>
   ${o.hora && !o.pacId ? `<p class="mini" style="margin-top:8px">¿No atiendes a esa hora? <a href="#" onclick="cerrarModal();setTimeout(()=>formBloqueo({fecha:'${esc(o.fecha)}',hora:'${esc(o.hora)}'}),250);return false">Marcar no disponible</a></p>` : ''}
+  <div id="ct-paq"></div>
   <label>Enlace de videollamada (opcional)</label><input id="ct-link" maxlength="300" placeholder="https://meet.google.com/...">
   <button class="btn sm ghost" style="margin-top:8px" onclick="$('ct-link').value='https://meet.jit.si/ConsultaLV-'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('')">🎥 Crear sala privada de videollamada</button>
   <button class="btn full" id="ct-btn" onclick="guardarCita()">Agendar (confirmada)</button>
   <button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
-  F.pacs = pacs;
-  if ($('ct-pac') && pacs.length === 1) $('ct-pac').selectedIndex = 0;
+  F.pacs = pacs; F.paqs = [];
+  if ($('ct-pac')) $('ct-pac').addEventListener('change', () => paquetesEnCita($('ct-pac').value));
+  if ($('ct-pac') && pacs.length === 1) { $('ct-pac').selectedIndex = 0; paquetesEnCita(pacs[0].id); }
+  if (o.pacId) paquetesEnCita(o.pacId, o.paquete);
+}
+async function paquetesEnCita(pacId, sel){
+  const box = $('ct-paq'); if (!box || !pacId) return;
+  const l = ((await cargarPaquetes(pacId)) || []).filter(q => q.activo && q.quedan > 0); F.paqs = l;
+  box.innerHTML = l.length ? `<label>Cobro</label><select id="ct-cobro"><option value="">Valor normal del servicio</option>${l.map(q => `<option value="${q.id}" ${q.id === sel ? 'selected' : ''}>📦 Descontar de "${esc(q.nombre)}" (quedan ${q.quedan})</option>`).join('')}</select>` : '';
 }
 const F = { cita: {}, pacs: [] };
 function filtrarPacCita(q){
@@ -1595,10 +1612,13 @@ async function guardarCita(){
   const rep = +($('ct-rep') ? $('ct-rep').value : 0), n = rep ? Math.max(2, Math.min(24, parseInt($('ct-n').value, 10) || 2)) : 1, serie = rep ? uuid() : null;
   $('ct-btn').disabled = true; $('ct-btn').textContent = 'Agendando…';
   const ok = [], cruces = [];
+  const pq = $('ct-cobro') && $('ct-cobro').value ? (F.paqs || []).find(q => q.id === $('ct-cobro').value) : null; let quedan = pq ? pq.quedan : 0;
   for (let i = 0; i < n; i++) {
     const dia = sumarDias(f, rep * i), ini = new Date(`${dia}T${h}:00-05:00`), fin = new Date(ini.getTime() + (+sv.dataset.d) * 60000);
-    const { error } = await sb.from('citas').insert({ paciente_id: pac, servicio_id: sv.value, inicio: ini.toISOString(), fin: fin.toISOString(),
-      estado: 'confirmada', origen: 'manual', valor: +sv.dataset.p || 0, enlace_virtual: link, serie });
+    const usaPq = pq && quedan > 0;
+    const { error } = await sb.from('citas').insert(Object.assign({ paciente_id: pac, servicio_id: sv.value, inicio: ini.toISOString(), fin: fin.toISOString(),
+      estado: 'confirmada', origen: 'manual', valor: usaPq ? 0 : (+sv.dataset.p || 0), enlace_virtual: link, serie }, usaPq ? { paquete_id: pq.id, pagado: true, metodo_pago: 'paquete' } : {}));
+    if (!error && usaPq) quedan--;
     if (!error) ok.push(dia);
     else if (/sin_cruce|23P01|exclusion/i.test(error.message || '')) cruces.push(dia);
     else { $('ct-btn').disabled = false; $('ct-btn').textContent = 'Agendar (confirmada)'; toast(mensajeError(error), true); if (!ok.length) return; break; }
@@ -1658,7 +1678,7 @@ function exportarHistoria(){
 /* =========================================================
    v3 · MÁS, FINANZAS, ESPERA, RESEÑAS, PLANTILLAS, ADJUNTOS, HABEAS
    ========================================================= */
-const GRUPO = { suscripcion: 'mas', admin: 'mas', seguridad: 'mas', legal: 'mas', guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
+const GRUPO = { estadisticas: 'mas', suscripcion: 'mas', admin: 'mas', seguridad: 'mas', legal: 'mas', guia: 'mas', servicios: 'mas', horarios: 'mas', perfil: 'mas', resenas: 'mas', espera: 'mas', plantillas: 'mas', habeas: 'mas' };
 function uuid(){ if (crypto.randomUUID) return crypto.randomUUID(); const b = azar(16); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128; const h = [...b].map(x => x.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; }
 function refrescarVista(){ const f = { inicio: vistaInicio, agenda: vistaAgenda, finanzas: vistaFinanzas }[S.vista]; if (f) f(); }
 function urlPublica(q){ return location.origin + location.pathname + q; }
@@ -2505,10 +2525,11 @@ function pintarCita(msg){
   ${/^https:\/\//.test(d.enlace || '') ? `🎥 Cita virtual` : d.direccion ? `📍 ${esc(d.direccion)}` : ''}</p>
   ${/^https:\/\//.test(d.enlace || '') && ['pendiente', 'confirmada'].includes(d.estado) ? `<a class="btn full" target="_blank" rel="noopener" href="${esc(d.enlace)}">🎥 Entrar a la videollamada</a><p class="mini">Ábrelo a la hora de la cita, desde un lugar privado y con audífonos si puedes.</p>` : ''}
   ${d.confirmada ? '<p class="mini">✅ Ya confirmaste tu asistencia.</p>' : ''}</div>
-  ${d.puede_cancelar ? `<div class="card"><h3 style="margin-top:0">¿Qué quieres hacer?</h3>
+  ${(d.puede_confirmar ?? d.puede_cancelar) ? `<div class="card"><h3 style="margin-top:0">¿Qué quieres hacer?</h3>
     ${!d.confirmada ? `<button class="btn full" onclick="accionCita('confirmar')">✅ Confirmo que asistiré</button>` : ''}
-    ${d.puede_reprogramar ? `<button class="btn full ghost" onclick="abrirReprogramar()">🔄 Cambiar fecha u hora</button>` : `<p class="mini">Para cambiar la fecha con menos de 12 horas, escríbele a ${esc(d.profesional)}.</p>`}
-    <button class="btn full red" onclick="accionCita('cancelar')">Cancelar mi cita</button></div><div id="rp"></div>` : ''}
+    ${d.puede_reprogramar ? `<button class="btn full ghost" onclick="abrirReprogramar()">🔄 Cambiar fecha u hora</button>` : ''}
+    ${d.puede_cancelar ? `<button class="btn full red" onclick="accionCita('cancelar')">Cancelar mi cita</button>` : ''}
+    ${!d.puede_cancelar || !d.puede_reprogramar ? `<p class="mini">${d.horas ? `Los cambios en línea se pueden hacer hasta ${d.horas} horas antes de la cita.` : 'Ya no se puede cambiar en línea.'} Para otro cambio, escríbele a ${esc(d.profesional)}.</p>` : d.horas ? `<p class="mini">Puedes cancelar o reprogramar hasta ${d.horas} horas antes.</p>` : ''}</div><div id="rp"></div>` : ''}
   ${wa ? `<a class="btn full ghost" target="_blank" rel="noopener" href="${wa}">💬 Escribirle a ${esc(d.profesional)}</a>` : ''}
   ${d.slug ? `<a class="btn full ghost" href="${esc(urlPublica('?p=' + d.slug))}">Ver perfil</a>` : ''}
   <div class="pie">¿Estás en crisis? Línea 106 · 123<br>Consulta LV · LV Studio</div></div>`;
@@ -2624,6 +2645,255 @@ function textoPagoDe(m, sinNequiNiPse){
   return lineasPago(m).filter(x => !sinNequiNiPse || (x.k !== 'nequi' && x.k !== 'pse')).map(x => x.url ? x.t + ': ' + x.url : x.t);
 }
 
+/* =========================================================
+   v12 · GRÁFICAS, CONSTANCIA, INFORME, SEMANA EN CELULAR, PAQUETES, ESTADÍSTICAS
+   ========================================================= */
+/* --- GRÁFICA DE EVOLUCIÓN DE UNA PRUEBA --- */
+function graficaEscala(tipo, l){
+  const e = ESCALAS[tipo]; if (!e.max || !e.nivel || l.length < 2) return '';
+  const W = 320, H = 140, L = 26, R = 24, T = 8, B = 22, iw = W - L - R, ih = H - T - B;
+  const y = v => T + ih - (v / e.max) * ih, x = i => L + (l.length === 1 ? iw / 2 : i * iw / (l.length - 1));
+  const COL = { 'b-ok': '#d1fae5', 'b-conf': '#dbeafe', 'b-pend': '#fef3c7', 'b-bad': '#fee2e2' };
+  let bandas = '', ini = 0, cls = e.nivel(0)[1];
+  for (let v = 1; v <= e.max + 1; v++) { const c = v <= e.max ? e.nivel(v)[1] : null; if (c !== cls) { bandas += `<rect x="${L}" y="${y(Math.min(v, e.max + 0.5) - 0.5).toFixed(1)}" width="${iw}" height="${(y(ini - 0.5) - y(Math.min(v, e.max + 0.5) - 0.5)).toFixed(1)}" fill="${COL[cls] || '#f1f5f9'}"/>`; ini = v; cls = c; } }
+  const pts = l.map((r, i) => [x(i), y(r.d.total)]);
+  const fechas = l.map(r => fecha(r.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short' }));
+  const salto = Math.ceil(l.length / 5);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;margin:4px 0 10px;display:block" role="img" aria-label="Evolución de ${esc(e.corto || tipo)}">
+    ${bandas}<line x1="${L}" y1="${T + ih}" x2="${W - R}" y2="${T + ih}" stroke="#cbd5e1"/>
+    ${[0, Math.round(e.max / 2), e.max].map(v => `<text x="${L - 4}" y="${y(v) + 3}" font-size="9" text-anchor="end" fill="#64748b">${v}</text>`).join('')}
+    <polyline points="${pts.map(p => p.map(n => n.toFixed(1)).join(',')).join(' ')}" fill="none" stroke="var(--pri)" stroke-width="2.2" stroke-linejoin="round"/>
+    ${pts.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.6" fill="#fff" stroke="var(--pri)" stroke-width="2"/><text x="${p[0].toFixed(1)}" y="${(p[1] - 7).toFixed(1)}" font-size="9" text-anchor="middle" fill="#0f172a" font-weight="700">${l[i].d.total}</text>
+      ${i % salto === 0 || i === l.length - 1 ? `<text x="${p[0].toFixed(1)}" y="${H - 6}" font-size="8.5" text-anchor="${i === l.length - 1 && l.length > 1 ? 'end' : i === 0 ? 'start' : 'middle'}" fill="#64748b">${esc(fechas[i])}</text>` : ''}`).join('')}
+  </svg>`;
+}
+
+/* --- CONSTANCIA DE ASISTENCIA --- */
+async function formConstancia(pacId, citaId){
+  const [pa, ci] = await Promise.all([sb.from('pacientes').select('*').eq('id', pacId).single(),
+    sb.from('citas').select('id,inicio,fin,estado,servicios(nombre)').eq('paciente_id', pacId).eq('estado', 'asistio').lte('inicio', new Date().toISOString()).order('inicio', { ascending: true })]);
+  if (pa.error) { toast(mensajeError(pa.error), true); return; }
+  const l = (ci.data || []).filter(x => new Date(x.inicio) <= new Date()).sort((x, y) => x.inicio < y.inicio ? -1 : 1); if (!l.length) { toast('Este paciente aún no tiene citas marcadas como "Asistió"', true); return; }
+  CONST.pac = pa.data; CONST.citas = l; CONST.una = citaId || '';
+  const d0 = bog(l[0].inicio).ymd, d1 = bog(l[l.length - 1].inicio).ymd;
+  abrirModal(`<h3>🧾 Constancia de asistencia</h3><p class="mini" style="margin-top:0">${esc(pa.data.nombres)} · ${l.length} sesión(es) con asistencia.</p>
+  ${citaId ? `<label class="check"><input type="radio" name="cs-q" value="una" checked><span>Solo la cita del ${esc(fecha(l.find(x => x.id === citaId) ? l.find(x => x.id === citaId).inicio : l[l.length - 1].inicio, { day: 'numeric', month: 'long', year: 'numeric' }))}</span></label>` : ''}
+  <label class="check"><input type="radio" name="cs-q" value="rango" ${citaId ? '' : 'checked'}><span>Todas las sesiones entre estas fechas:</span></label>
+  <div class="fila"><div class="grow"><label>Desde</label><input type="date" id="cs-d" value="${d0}"></div><div class="grow"><label>Hasta</label><input type="date" id="cs-h" value="${d1}"></div></div>
+  <label>Dirigida a (opcional)</label><input id="cs-a" maxlength="100" placeholder="Ej: A quien interese · Empresa XYZ · Colegio ABC">
+  <label class="check"><input type="checkbox" id="cs-h2" checked><span>Incluir la hora de cada sesión</span></label>
+  <label class="check"><input type="checkbox" id="cs-gen"><span>Por confidencialidad, decir <b>"consulta de salud"</b> en vez de "atención psicológica"</span></label>
+  <p class="mini">La constancia no incluye diagnóstico ni contenido de las sesiones (reserva profesional, Ley 1090 de 2006).</p>
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" onclick="imprimirConstancia()">🖨️ Generar PDF</button></div></div>`);
+}
+const CONST = {};
+function membrete(){
+  const p = S.prof;
+  return `<div style="border-bottom:2px solid #0e7490;padding-bottom:10px;margin-bottom:24px"><b style="font-size:18px">${esc(p.nombre)}</b><br>${esc(p.titulo || 'Psicólogo(a)')}${p.tarjeta_profesional ? ' · T.P. ' + esc(p.tarjeta_profesional) : ''}<br>
+  <small>${[p.direccion, p.ciudad, p.whatsapp ? 'Cel. ' + p.whatsapp : '', p.email].filter(Boolean).map(esc).join(' · ')}</small></div>`;
+}
+function firmaProfesional(){
+  const p = S.prof;
+  return `<div style="margin-top:70px;width:300px;border-top:1px solid #0f172a;padding-top:6px"><b>${esc(p.nombre)}</b><br>${esc(p.titulo || 'Psicólogo(a)')}<br>${p.tarjeta_profesional ? 'Tarjeta profesional ' + esc(p.tarjeta_profesional) : ''}</div>`;
+}
+function ventanaDoc(titulo, cuerpo){
+  const w = window.open('', '_blank'); if (!w) { toast('Permite las ventanas emergentes para generar el PDF', true); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>body{font-family:Arial,sans-serif;max-width:720px;margin:36px auto;padding:0 24px;color:#0f172a;line-height:1.6;font-size:14.5px}h2{text-align:center;font-size:18px;margin:10px 0 24px;letter-spacing:.5px}h4{margin:18px 0 4px}p{margin:6px 0 10px;white-space:pre-wrap}table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;font-size:13.5px}.pie{margin-top:30px;font-size:11px;color:#64748b}@media print{body{margin:16mm auto}}</style></head><body>${cuerpo}<script>setTimeout(()=>print(),400)<\/script></body></html>`);
+  w.document.close();
+}
+function imprimirConstancia(){
+  const q = (document.querySelector('input[name=cs-q]:checked') || {}).value, pa = CONST.pac, p = S.prof;
+  let l = CONST.citas;
+  if (q === 'una') l = l.filter(x => x.id === CONST.una);
+  else { const d = $('cs-d').value, h = $('cs-h').value; l = l.filter(x => { const y = bog(x.inicio).ymd; return (!d || y >= d) && (!h || y <= h); }); }
+  if (!l.length) { toast('No hay sesiones con asistencia en ese rango', true); return; }
+  const gen = $('cs-gen').checked, conH = $('cs-h2').checked, a = $('cs-a').value.trim() || 'A quien interese';
+  const tipo = gen ? 'consulta de salud' : 'atención psicológica';
+  const f = x => fecha(x.inicio, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + (conH ? `, de ${hora(x.inicio)} a ${hora(x.fin)}` : '');
+  const cuerpo = membrete() + `<p style="text-align:right">${esc(p.ciudad || '')}${p.ciudad ? ', ' : ''}${esc(fecha(new Date().toISOString(), { day: 'numeric', month: 'long', year: 'numeric' }))}</p>
+  <p><b>${esc(a)}</b></p><h2>CONSTANCIA DE ASISTENCIA</h2>
+  <p>${l.length === 1
+    ? `La suscrita profesional hace constar que <b>${esc(pa.nombres)}</b>, identificado(a) con documento N.° <b>${esc(pa.documento)}</b>, asistió a ${tipo} el día <b>${esc(f(l[0]))}</b>.`
+    : `La suscrita profesional hace constar que <b>${esc(pa.nombres)}</b>, identificado(a) con documento N.° <b>${esc(pa.documento)}</b>, asistió a ${tipo} en las siguientes ${l.length} fechas:`}</p>
+  ${l.length > 1 ? `<table><tr><th>#</th><th>Fecha${conH ? ' y hora' : ''}</th></tr>${l.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(f(x))}</td></tr>`).join('')}</table>` : ''}
+  <p>La presente se expide a solicitud del interesado(a). Por reserva profesional (Ley 1090 de 2006) no se incluye información clínica.</p>
+  ${firmaProfesional()}<div class="pie">Documento generado con Consulta LV.</div>`;
+  cerrarModal(); ventanaDoc('Constancia de asistencia - ' + pa.nombres, cuerpo);
+  sb.rpc('registrar_acceso', { p_tabla: 'constancia', p_id: pa.id });
+}
+
+/* --- INFORME PSICOLÓGICO Y REMISIÓN --- */
+function formInforme(){
+  const h = historiaActual(), d = (h && h.d && h.d.hc) || {}, p = P.actual;
+  const ultimas = Object.keys(ESCALAS).map(t => { const l = P.escalas.filter(x => x.tipo === t && x.d); if (!l.length) return ''; const u = l[l.length - 1], e = ESCALAS[t];
+    return `${e.corto || t}: ${e.max ? u.d.total + '/' + e.max + ' · ' : ''}${u.d.nivel} (${fecha(u.fecha + 'T12:00:00Z', { day: 'numeric', month: 'short', year: 'numeric' })})${l.length > 1 ? ', ' + l.length + ' aplicaciones' : ''}`; }).filter(Boolean).join('\n');
+  const asist = P.citas.filter(c => c.estado === 'asistio'), primera = asist.length ? asist[asist.length - 1] : null;
+  const evol = asist.length ? `${asist.length} sesión(es) con asistencia${primera ? ' desde el ' + fecha(primera.inicio, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}.${d.enfoque ? ' Enfoque: ' + d.enfoque + '.' : ''}` : '';
+  const S_ = [['destinatario', 'Dirigido a', 'Ej: Médico tratante, EPS, colegio, empresa o "A quien interese"', d.remitido && /m[eé]dic|eps|colegio|empresa/i.test(d.remitido) ? d.remitido : ''],
+    ['motivo_informe', 'Motivo del informe o de la remisión', 'Ej: solicitud del paciente / remisión a psiquiatría para valoración farmacológica', ''],
+    ['motivo', 'Motivo de consulta', '', d.motivo || ''],
+    ['antecedentes', 'Antecedentes relevantes', '', [d.problema, d.ant_psico, d.ant_medicos].filter(Boolean).join('\n')],
+    ['evaluacion', 'Evaluación y pruebas aplicadas', '', [d.pruebas, ultimas].filter(Boolean).join('\n')],
+    ['dx', 'Impresión diagnóstica', '', [d.dx, d.dx_dif ? 'Diferencial: ' + d.dx_dif : ''].filter(Boolean).join('\n')],
+    ['intervencion', 'Intervención y evolución', '', [evol, d.objetivos ? 'Objetivos: ' + d.objetivos : ''].filter(Boolean).join('\n')],
+    ['conclusiones', 'Conclusiones y recomendaciones', '', d.recomendaciones || '']];
+  INF.campos = S_;
+  abrirModal(`<h3>📑 Informe psicológico o remisión</h3>
+  <p class="mini" style="margin-top:0">Tomé los datos de la historia y de las pruebas de ${esc(p.nombres)}. Revisa y ajusta: incluye solo la información necesaria para el propósito del informe (Ley 1090 y Res. 2346 de 2007).</p>
+  <label>Tipo de documento</label><select id="in-tipo"><option value="informe">Informe psicológico</option><option value="remision">Remisión / interconsulta</option><option value="cierre">Informe de cierre (epicrisis)</option></select>
+  ${S_.map(([k, t, ph, v]) => `<label>${esc(t)}</label><textarea id="in-${k}" style="min-height:${k === 'destinatario' || k === 'motivo_informe' ? 44 : 80}px" placeholder="${esc(ph)}">${esc(v)}</textarea>`).join('')}
+  <label class="check"><input type="checkbox" id="in-guardar" checked><span>Guardar una copia cifrada en la evolución del paciente</span></label>
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="in-btn" onclick="generarInforme()">🖨️ Generar PDF</button></div></div>`);
+}
+const INF = {};
+async function generarInforme(){
+  const p = P.actual, tipo = $('in-tipo').value, T = { informe: 'INFORME PSICOLÓGICO', remision: 'REMISIÓN / INTERCONSULTA PSICOLÓGICA', cierre: 'INFORME DE CIERRE (EPICRISIS)' }[tipo];
+  const v = INF.campos.map(([k, t]) => [t, $('in-' + k).value.trim()]);
+  if (!v.some(([t, x], i) => i > 1 && x)) { toast('Escribe al menos una sección del informe', true); return; }
+  const dest = v[0][1] || 'A quien interese';
+  const cuerpo = membrete() + `<p style="text-align:right">${esc(S.prof.ciudad || '')}${S.prof.ciudad ? ', ' : ''}${esc(fecha(new Date().toISOString(), { day: 'numeric', month: 'long', year: 'numeric' }))}</p>
+  <p><b>${esc(dest)}</b></p><h2>${T}</h2>
+  <table><tr><td><b>Nombre</b></td><td>${esc(p.nombres)}</td><td><b>Documento</b></td><td>${esc(p.documento)}</td></tr>
+  <tr><td><b>Edad</b></td><td>${p.fecha_nacimiento ? esc(edad(p.fecha_nacimiento)) : '—'}</td><td><b>Fecha</b></td><td>${esc(hoyYMD())}</td></tr></table>
+  ${v.slice(1).filter(x => x[1]).map(([t, x]) => `<h4>${esc(t)}</h4><p>${esc(x)}</p>`).join('')}
+  ${firmaProfesional()}<div class="pie">Documento confidencial. Contiene información sujeta a reserva profesional (Ley 1090 de 2006) y datos sensibles (Ley 1581 de 2012). Prohibida su divulgación sin autorización del titular.</div>`;
+  if ($('in-guardar').checked) {
+    const d = { tipo: tipo === 'cierre' ? 'cierre' : 'otra', riesgo: 'ninguno', plantilla: { informe: 'Informe psicológico', remision: 'Remisión / interconsulta', cierre: 'Cierre del proceso (epicrisis)' }[tipo], campos: v.filter(x => x[1]) };
+    const r = await sb.from('notas_clinicas').insert(Object.assign({ paciente_id: p.id, fecha: hoyYMD() }, await cifrar(d)));
+    if (r.error) toast('No se pudo guardar la copia: ' + mensajeError(r.error), true);
+  }
+  cerrarModal(); ventanaDoc(T + ' - ' + p.nombres, cuerpo);
+  sb.rpc('registrar_acceso', { p_tabla: 'informe', p_id: p.id });
+  setTimeout(() => abrirFicha(p.id), 300);
+}
+
+/* --- SEMANA EN EL CELULAR (lista por día) --- */
+function htmlSemanaMovil(){
+  const dias = diasVista(), hoy = hoyYMD();
+  return `<div class="sem-m">${dias.map(d => {
+    const cs = A.citas.filter(c => bog(c.inicio).ymd === d && c.estado !== 'cancelada'), fr = franjasDia(d), fest = esFestivoCO(d);
+    const t = fecha(d + 'T17:00:00Z', { weekday: 'long', day: 'numeric', month: 'short' });
+    return `<div class="card sem-d ${d === hoy ? 'hoy' : ''}"><div class="row" onclick="A.modo='dia';irFecha('${d}')" style="cursor:pointer"><b class="grow">${esc(t.charAt(0).toUpperCase() + t.slice(1))}</b>
+      ${fest ? '<span class="badge b-bad">Festivo</span>' : !fr.length ? '<span class="badge b-gris">No atiendes</span>' : `<span class="sub">${cs.length ? cs.length + ' cita(s)' : 'Libre'}</span>`}<span class="sub" style="margin-left:6px">›</span></div>
+      ${cs.map(c => { const col = COLOR[c.estado] || COLOR.pendiente; return `<div class="sem-c" style="border-left:4px solid ${col[1]};background:${col[0]}" onclick="detalleCita('${c.id}')"><b>${esc(hora(c.inicio))}</b> ${esc((c.pacientes || {}).nombres || 'Paciente')}<small>${esc((c.servicios || {}).nombre || '')}${c.paquete_id ? ' · 📦 paquete' : ''}</small></div>`; }).join('')}
+      ${fr.length && !fest ? `<button class="btn sm ghost" style="margin-top:6px" onclick="formCita({fecha:'${d}'})">+ Cita</button>` : ''}</div>`; }).join('')}</div>`;
+}
+
+/* --- PAQUETES DE SESIONES --- */
+async function cargarPaquetes(pacId){
+  const { data, error } = await sb.from('paquetes').select('*').eq('paciente_id', pacId).order('created_at', { ascending: false });
+  if (error) return null;
+  const { data: cs } = await sb.from('citas').select('id,paquete_id,estado').eq('paciente_id', pacId).not('paquete_id', 'is', null);
+  return (data || []).map(q => { const usadas = (cs || []).filter(c => c.paquete_id === q.id && c.estado !== 'cancelada').length; return Object.assign({}, q, { usadas, quedan: Math.max(0, q.sesiones - usadas) }); });
+}
+async function htmlPaquetesFicha(){
+  const box = $('paq-f'); if (!box) return;
+  const l = await cargarPaquetes(P.actual.id); if (l === null) { box.innerHTML = ''; return; }
+  P.paquetes = l;
+  box.innerHTML = `<div class="card"><div class="row"><h3 class="grow" style="margin:0">📦 Paquetes de sesiones</h3><button class="btn sm" onclick="formPaquete()">+ Paquete</button></div>
+  ${l.length ? l.map(q => `<div style="padding:10px 0;border-top:1px solid var(--line);margin-top:8px"><div class="row"><span class="grow"><b>${esc(q.nombre)}</b><br><small class="sub">${esc(q.fecha)} · ${esc(peso(q.valor))} · ${q.pagado ? '✅ Pagado' + (METODOS[q.metodo_pago] ? ' (' + METODOS[q.metodo_pago].replace(/^\S+\s/, '') + ')' : '') : '⏳ Sin pagar'}</small></span>
+    <span class="badge ${!q.activo || !q.quedan ? 'b-gris' : q.quedan <= 1 ? 'b-pend' : 'b-ok'}">${q.quedan} de ${q.sesiones}</span></div>
+    <div class="barra" style="margin-top:6px"><div style="width:${Math.round(q.usadas / q.sesiones * 100)}%;background:var(--pri)"></div></div>
+    <div class="acciones">${!q.pagado ? `<button class="btn sm" onclick="pagarPaquete('${q.id}')">✓ Marcar pagado</button>` : ''}${q.activo && q.quedan ? `<button class="btn sm ghost" onclick="formCita({pacId:P.actual.id,nombre:P.actual.nombres,volver:'ficha',paquete:'${q.id}'})">📅 Agendar con este paquete</button>` : ''}
+    ${q.activo ? `<button class="btn sm ghost" onclick="cerrarPaquete('${q.id}')">Cerrar</button>` : '<span class="sub">Cerrado</span>'}</div></div>`).join('') : '<p class="mini">Vende varias sesiones por adelantado (ej. 4 sesiones con descuento). Cada cita del paquete se descuenta sola y no vuelve a cobrarse.</p>'}</div>`;
+}
+function formPaquete(){
+  const sv = (S.servicios || [])[0], pr = sv ? sv.precio : 0;
+  abrirModal(`<h3>📦 Nuevo paquete de sesiones</h3>
+  <label>Nombre</label><input id="pq-n" maxlength="80" value="Paquete de 4 sesiones">
+  <div class="fila"><div class="grow"><label>N.° de sesiones</label><input id="pq-s" type="number" min="1" max="100" value="4" oninput="$('pq-n').value='Paquete de '+this.value+' sesiones'"></div>
+  <div class="grow"><label>Valor total</label><input id="pq-v" type="number" min="0" step="1000" value="${pr ? pr * 4 * 0.9 : ''}" placeholder="Ej: 360000"></div></div>
+  ${pr ? `<p class="mini">Tu sesión vale ${esc(peso(pr))}. Sugerencia: 10% de descuento.</p>` : ''}
+  <label class="check"><input type="checkbox" id="pq-p" onchange="$('pq-mw').style.display=this.checked?'':'none'"><span>Ya me lo pagó</span></label>
+  <div id="pq-mw" style="display:none"><label>Medio de pago</label><select id="pq-m">${Object.entries(METODOS).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select></div>
+  <div class="sheet-pie"><div class="fila"><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button><button class="btn full" id="pq-b" onclick="guardarPaquete()">Crear paquete</button></div></div>`);
+}
+async function guardarPaquete(){
+  const s = parseInt($('pq-s').value, 10), v = parseInt($('pq-v').value, 10) || 0, n = $('pq-n').value.trim();
+  if (!(s >= 1 && s <= 100)) { toast('Número de sesiones entre 1 y 100', true); return; }
+  if (n.length < 2) { toast('Escribe un nombre', true); return; }
+  $('pq-b').disabled = true;
+  const pag = $('pq-p').checked;
+  const { error } = await sb.from('paquetes').insert({ paciente_id: P.actual.id, nombre: n, sesiones: s, valor: Math.max(0, v), pagado: pag, metodo_pago: pag ? $('pq-m').value : '' });
+  if (error) { $('pq-b').disabled = false; toast(/paquetes|schema cache/i.test(error.message || '') ? 'Falta ejecutar la actualización v12 de la base de datos' : mensajeError(error), true); return; }
+  cerrarModal(); toast('Paquete creado 📦'); htmlPaquetesFicha();
+}
+function pagarPaquete(id){
+  abrirModal(`<h3>¿Cómo te pagó el paquete?</h3><div class="menu-mas">${Object.entries(METODOS).map(([k, t]) => `<button onclick="confirmarPagoPaquete('${id}','${k}')"><span class="grow"><b>${t}</b></span><span class="sub">›</span></button>`).join('')}</div><button class="btn full ghost" onclick="cerrarModal()">Cancelar</button>`);
+}
+async function confirmarPagoPaquete(id, m){
+  const { error } = await sb.from('paquetes').update({ pagado: true, metodo_pago: m, fecha: hoyYMD() }).eq('id', id);
+  cerrarModal(); if (error) { toast(mensajeError(error), true); return; } toast('Paquete pagado ✅'); htmlPaquetesFicha();
+}
+async function cerrarPaquete(id){
+  if (!confirm('¿Cerrar este paquete? Ya no se podrán agendar citas con él.')) return;
+  await sb.from('paquetes').update({ activo: false }).eq('id', id); htmlPaquetesFicha();
+}
+
+/* --- ESTADÍSTICAS DEL CONSULTORIO --- */
+async function vistaEstadisticas(){
+  const v = $('vista'); v.innerHTML = `<h2>📈 Estadísticas</h2><div id="est-c"><div class="carga">Calculando…</div></div>`;
+  const ini = mesSum(hoyYMD().slice(0, 7), -5) + '-01';
+  const [c, pa] = await Promise.all([sb.from('citas').select('id,inicio,estado,origen,valor,pagado,paciente_id,servicios(nombre)').gte('inicio', ini + 'T00:00:00-05:00').lt('inicio', new Date().toISOString()),
+    sb.from('pacientes').select('id,created_at')]);
+  const box = $('est-c'); if (!box) return;
+  if (c.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error))}</div>`; return; }
+  const cs = c.data || [], val = cs.filter(x => x.estado !== 'cancelada');
+  const asis = cs.filter(x => x.estado === 'asistio').length, noA = cs.filter(x => x.estado === 'no_asistio').length, canc = cs.filter(x => x.estado === 'cancelada').length;
+  const pct = (a, b) => b ? Math.round(a / b * 100) + '%' : '—';
+  const meses = [0, 1, 2, 3, 4, 5].map(i => mesSum(hoyYMD().slice(0, 7), i - 5));
+  const nuevos = meses.map(m => (pa.data || []).filter(x => (x.created_at || '').slice(0, 7) === m).length);
+  const porMes = meses.map(m => val.filter(x => bog(x.inicio).ymd.slice(0, 7) === m && x.estado === 'asistio').length);
+  const serv = {}; val.forEach(x => { const k = (x.servicios || {}).nombre || 'Sin servicio'; serv[k] = (serv[k] || 0) + 1; });
+  const online = val.filter(x => x.origen === 'online').length;
+  const ingreso = val.filter(x => x.pagado).reduce((s, x) => s + (x.valor || 0), 0), cobradas = val.filter(x => x.pagado && x.valor).length;
+  const pacs = new Set(val.map(x => x.paciente_id)).size;
+  const barras = (vals, etq, color) => { const mx = Math.max(1, ...vals); return `<div class="est-b">${vals.map((n, i) => `<div><span>${n}</span><i style="height:${Math.round(n / mx * 90) + 4}px;background:${color}"></i><small>${etq[i]}</small></div>`).join('')}</div>`; };
+  const tile = (n, t, c2) => `<div class="kpi"><b style="color:${c2 || 'var(--pri)'}">${n}</b><span>${t}</span></div>`;
+  box.innerHTML = `<p class="mini" style="margin-top:0">Últimos 6 meses (citas hasta hoy).</p>
+  <div class="kpis">${tile(asis, 'Sesiones atendidas')}${tile(pacs, 'Pacientes atendidos')}${tile(pct(noA, asis + noA), 'Inasistencias', noA / Math.max(1, asis + noA) > 0.15 ? '#dc2626' : '#d97706')}${tile(pct(canc, cs.length), 'Canceladas', '#64748b')}</div>
+  <div class="card"><h3>Sesiones atendidas por mes</h3>${barras(porMes, meses.map(m => nombreMes(m, true)), 'var(--pri)')}</div>
+  <div class="card"><h3>Pacientes nuevos por mes</h3>${barras(nuevos, meses.map(m => nombreMes(m, true)), '#7c3aed')}</div>
+  <div class="card"><h3>Servicios más pedidos</h3>${Object.entries(serv).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<div style="margin:8px 0"><div class="row" style="font-size:14px"><span class="grow">${esc(k)}</span><b>${n}</b></div><div class="barra"><div style="width:${Math.round(n / Math.max(1, val.length) * 100)}%;background:var(--pri)"></div></div></div>`).join('') || '<p class="mini">Sin datos aún.</p>'}</div>
+  <div class="card"><h3>¿Cómo llegan tus citas?</h3><div class="row" style="font-size:14px;margin:6px 0"><span class="grow">🌐 Reservadas por el paciente en tu página</span><b>${pct(online, val.length)}</b></div><div class="row" style="font-size:14px"><span class="grow">✍️ Agendadas por ti</span><b>${pct(val.length - online, val.length)}</b></div>
+    <p class="mini">${online / Math.max(1, val.length) < 0.3 ? '💡 Comparte más tu enlace de reservas (Instagram, WhatsApp Business) para que te agenden solos.' : '👏 Buena parte de tus pacientes ya reserva solo.'}</p></div>
+  <div class="card"><h3>Ingresos</h3><div class="row" style="font-size:14px;margin:6px 0"><span class="grow">Cobrado por sesiones (6 meses)</span><b>${esc(peso(ingreso))}</b></div><div class="row" style="font-size:14px"><span class="grow">Valor promedio por sesión cobrada</span><b>${esc(peso(cobradas ? Math.round(ingreso / cobradas) : 0))}</b></div>
+    ${noA ? `<p class="mini">Las ${noA} inasistencias equivalen a unos <b>${esc(peso(noA * (cobradas ? Math.round(ingreso / cobradas) : 0)))}</b> sin cobrar. Usa "Recordar citas de mañana" y el enlace para confirmar.</p>` : ''}</div>`;
+}
+
+/* --- POR COBRAR (todos los meses, agrupado por paciente) --- */
+async function htmlPorCobrarTodo(){
+  const box = $('cob-t'); if (!box) return;
+  const { data, error } = await sb.from('citas').select('id,inicio,valor,pagado,estado,paciente_id,pacientes(nombres,telefono)').eq('estado', 'asistio').eq('pagado', false).gt('valor', 0).order('inicio', { ascending: true });
+  if (error || !data || !data.length) { box.innerHTML = ''; return; }
+  const g = {}; data.forEach(x => { (g[x.paciente_id] = g[x.paciente_id] || { pa: x.pacientes || {}, l: [] }).l.push(x); });
+  const tot = data.reduce((s, x) => s + x.valor, 0);
+  box.innerHTML = `<div class="card" style="border:2px solid #f59e0b"><div class="row"><h3 class="grow" style="margin:0">💵 Te deben en total</h3><b style="font-size:20px">${esc(peso(tot))}</b></div><p class="mini">Sesiones atendidas sin pagar, de cualquier mes, por paciente.</p>
+  ${Object.values(g).sort((a, b) => b.l.length - a.l.length).map(({ pa, l }) => { const t = l.reduce((s, x) => s + x.valor, 0);
+    const msg = `Hola ${(pa.nombres || '').split(' ')[0]}, te comparto el saldo pendiente de ${l.length > 1 ? 'tus sesiones' : 'tu sesión'}: ${l.map(x => fecha(x.inicio, { day: 'numeric', month: 'short' }) + ' (' + peso(x.valor) + ')').join(', ')}. Total: ${peso(t)}. ${textoPago()}¡Gracias! — ${S.prof.nombre}`;
+    return `<div class="row" style="padding:9px 0;border-top:1px solid var(--line)"><span class="grow"><b>${esc(pa.nombres || 'Paciente')}</b><br><small class="sub">${l.length} sesión(es) · desde ${esc(fecha(l[0].inicio, { day: 'numeric', month: 'short' }))}</small></span><b style="margin-right:8px">${esc(peso(t))}</b>
+    ${pa.telefono ? `<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(msg)}">💬</a>` : ''}</div>`; }).join('')}</div>`;
+}
+
+/* --- CONFIRMAR QUE GUARDÓ EL CÓDIGO DE RECUPERACIÓN --- */
+let COD_TMP = '', COD_BLOQUE = 0;
+function pasoVerificarCodigo(){
+  if (!$('k-ok').checked) { toast('Confirma que guardaste el código', true); return; }
+  COD_BLOQUE = 2 + Math.floor(Math.random() * 4);
+  $('vista').innerHTML = `<h2>🔎 Comprobemos que lo guardaste</h2><div class="card">
+  <p style="font-size:15px;line-height:1.6">Mira el código que guardaste y escribe el <b>bloque número ${COD_BLOQUE}</b> (son 4 caracteres; los bloques están separados por guiones).</p>
+  <input id="k-rev" maxlength="4" autocapitalize="characters" style="text-align:center;font-size:26px;letter-spacing:8px;text-transform:uppercase">
+  <button class="btn full" onclick="comprobarBloque()">Comprobar</button>
+  <button class="btn full ghost" onclick="mostrarCodigo(COD_TMP)">No lo guardé: mostrar el código otra vez</button>
+  <p class="mini">Sin este código, si olvidas tu clave clínica, nadie (ni LV Studio) podrá recuperar tus historias.</p></div>`;
+  setTimeout(() => { const i = $('k-rev'); if (i) i.focus(); }, 100);
+}
+function comprobarBloque(){
+  const b = COD_TMP.split('-')[COD_BLOQUE - 1] || '', v = ($('k-rev').value || '').replace(/[^0-9a-z]/gi, '').toUpperCase();
+  if (v !== b) { toast('No coincide. Revisa el bloque ' + COD_BLOQUE + ' del código que guardaste.', true); return; }
+  COD_TMP = ''; toast('¡Perfecto! Tu código está bien guardado ✅'); vistaPacientes();
+}
+
 /* --- CALENDARIO (Google y .ics) --- */
 function fechaCal(iso){ return new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
 function enlaceGoogleCal(t, ini, fin, det, lugar){
@@ -2656,7 +2926,8 @@ function vistaMas(){
       ['servicios','💼','Servicios','Lo que ofreces, precio, duración y modalidad'],
       ['horarios','🕘','Disponibilidad','Horario automático y días no disponibles'],
       ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
-      ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron']]],
+      ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
+      ['estadisticas','📈','Estadísticas','Inasistencias, pacientes nuevos, servicios e ingresos']]],
     ['🩺 Clínica', [['guia','📘','Guía de consulta y formatos','Qué pedir, paso a paso y formatos para firmar'],
       ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
       ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)']]],
@@ -2698,31 +2969,37 @@ async function vistaFinanzas(){
   v.innerHTML = `<div class="row" style="margin-top:8px"><button class="btn sm ghost" onclick="FIN.mes=mesSum(FIN.mes,-1);vistaFinanzas()">‹</button>
     <h2 class="grow" style="text-align:center;margin:0">💰 ${esc(nombreMes(m))}</h2><button class="btn sm ghost" onclick="FIN.mes=mesSum(FIN.mes,1);vistaFinanzas()">›</button></div>
     <div id="fin-c"><div class="carga">Calculando…</div></div>`;
-  const [c, g] = await Promise.all([
+  const [c, g, pq] = await Promise.all([
     sb.from('citas').select('id,inicio,estado,valor,pagado,metodo_pago,paciente_id,pacientes(nombres,telefono),servicios(nombre)')
       .gte('inicio', ini + '-01T00:00:00-05:00').lt('inicio', mesSum(m, 1) + '-01T00:00:00-05:00').order('inicio', { ascending: true }),
-    sb.from('gastos').select('*').gte('fecha', ini + '-01').lt('fecha', mesSum(m, 1) + '-01').order('fecha', { ascending: false })]);
+    sb.from('gastos').select('*').gte('fecha', ini + '-01').lt('fecha', mesSum(m, 1) + '-01').order('fecha', { ascending: false }),
+    sb.from('paquetes').select('id,fecha,valor,pagado,metodo_pago,nombre').eq('pagado', true).gte('fecha', ini + '-01').lt('fecha', mesSum(m, 1) + '-01')]);
   const box = $('fin-c'); if (!box) return;
+  FIN.paq = pq && !pq.error ? (pq.data || []) : [];
   if (c.error || g.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || g.error))}</div>`; return; }
   FIN.citas = c.data || []; FIN.gastos = g.data || [];
   const delMes = (x, ym) => bog(x.inicio).ymd.slice(0, 7) === ym;
   const cm = FIN.citas.filter(x => delMes(x, m)), gm = FIN.gastos.filter(x => x.fecha.slice(0, 7) === m);
-  const cobrado = suma(cm.filter(x => x.pagado)), gastos = suma(gm);
+  const pqm = FIN.paq.filter(x => x.fecha.slice(0, 7) === m);
+  const cobrado = suma(cm.filter(x => x.pagado)) + suma(pqm), gastos = suma(gm);
   const porCobrar = cm.filter(x => !x.pagado && x.estado === 'asistio' && x.valor);
   const proyectado = suma(cm.filter(x => !x.pagado && ['pendiente', 'confirmada'].includes(x.estado)));
   const asis = cm.filter(x => x.estado === 'asistio').length, noAsis = cm.filter(x => x.estado === 'no_asistio').length;
   const tasa = asis + noAsis ? Math.round(noAsis / (asis + noAsis) * 100) : 0;
-  const meses = [0, 1, 2, 3, 4, 5].map(i => mesSum(ini, i)).map(ym => ({ ym, ing: suma(FIN.citas.filter(x => x.pagado && delMes(x, ym))), gas: suma(FIN.gastos.filter(x => x.fecha.slice(0, 7) === ym)) }));
+  const meses = [0, 1, 2, 3, 4, 5].map(i => mesSum(ini, i)).map(ym => ({ ym, ing: suma(FIN.citas.filter(x => x.pagado && delMes(x, ym))) + suma(FIN.paq.filter(x => x.fecha.slice(0, 7) === ym)), gas: suma(FIN.gastos.filter(x => x.fecha.slice(0, 7) === ym)) }));
   const tope = Math.max(1, ...meses.map(x => Math.max(x.ing, x.gas)));
   const porServ = {}; cm.filter(x => x.pagado).forEach(x => { const k = (x.servicios || {}).nombre || 'Otro'; porServ[k] = (porServ[k] || 0) + (x.valor || 0); });
-  const porMet = {}; cm.filter(x => x.pagado).forEach(x => { const k = METODOS[x.metodo_pago] || 'Sin especificar'; porMet[k] = (porMet[k] || 0) + (x.valor || 0); });
+  const porMet = {}; cm.filter(x => x.pagado && x.valor).forEach(x => { const k = METODOS[x.metodo_pago] || 'Sin especificar'; porMet[k] = (porMet[k] || 0) + (x.valor || 0); });
+  pqm.forEach(x => { const k = METODOS[x.metodo_pago] || 'Sin especificar'; porMet[k] = (porMet[k] || 0) + (x.valor || 0); });
+  if (pqm.length) porServ['📦 Paquetes de sesiones'] = suma(pqm);
   const util = cobrado - gastos;
   let h = `<div class="kpis">
     <div class="kpi"><b>${esc(peso(cobrado))}</b><span>Cobrado</span></div>
     <div class="kpi"><b style="color:var(--bad)">${esc(peso(gastos))}</b><span>Gastos</span></div>
     <div class="kpi"><b style="color:${util >= 0 ? '#059669' : 'var(--bad)'}">${util < 0 ? '−' : ''}${esc(peso(Math.abs(util)))}</b><span>Utilidad</span></div>
     <div class="kpi"><b style="color:#d97706">${esc(peso(suma(porCobrar)))}</b><span>Por cobrar</span></div></div>
-  <div class="acciones" style="margin-bottom:12px"><button class="btn sm" onclick="formGasto()">+ Registrar gasto</button><button class="btn sm ghost" onclick="exportarFinanzas()">⬇️ Exportar a Excel (CSV)</button></div>
+  <div class="acciones" style="margin-bottom:12px"><button class="btn sm" onclick="formGasto()">+ Registrar gasto</button><button class="btn sm ghost" onclick="exportarFinanzas()">⬇️ Exportar a Excel (CSV)</button><button class="btn sm ghost" onclick="irA('estadisticas')">📈 Estadísticas</button></div>
+  <div id="cob-t"></div>
   <div class="card"><h3>Últimos 6 meses</h3><div class="barras">${meses.map(x => `<div class="bcol${x.ym === m ? ' on' : ''}" onclick="FIN.mes='${x.ym}';vistaFinanzas()">
     <div class="bpar"><i class="bi" style="height:${x.ing / tope * 100}%" title="${esc(peso(x.ing))}"></i><i class="bg" style="height:${x.gas / tope * 100}%" title="${esc(peso(x.gas))}"></i></div><span>${esc(nombreMes(x.ym, true))}</span></div>`).join('')}</div>
     <div class="leyenda" style="margin-top:8px"><span><i style="background:var(--pri)"></i>Ingresos</span><span><i style="background:#f87171"></i>Gastos</span></div></div>
@@ -2738,7 +3015,7 @@ async function vistaFinanzas(){
     : `<div class="empty">🎉 No tienes sesiones atendidas pendientes de pago este mes.</div>`);
   h += `<h2>Gastos del mes (${gm.length})</h2>` + (gm.length ? `<div class="card">${gm.map(x => `<div class="franja"><span class="grow">${esc(CAT_GASTO[x.categoria] || x.categoria)} · ${esc(x.concepto)}<br><small class="sub">${esc(x.fecha)}</small></span><b style="margin:0 10px">${esc(peso(x.valor))}</b><button class="btn sm red" onclick="borrarGasto('${x.id}')">✕</button></div>`).join('')}</div>`
     : `<div class="empty">Sin gastos registrados. Registra arriendo, publicidad o software para conocer tu utilidad real.</div>`);
-  box.innerHTML = h;
+  box.innerHTML = h; htmlPorCobrarTodo();
 }
 function textoPago(){
   const t = textoPagoDe(mediosPago(S.prof), false);
