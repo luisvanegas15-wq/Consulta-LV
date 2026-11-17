@@ -77,6 +77,8 @@ textarea{min-height:90px;resize:vertical}
 .rapidos i{font-style:normal;font-size:24px}
 nav button{font-size:10.5px}
 .menu-mas{display:flex;flex-direction:column;gap:8px}
+.menu-mas .badge{white-space:nowrap}
+.mas-g{font-size:13px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.4px;margin:18px 4px 8px}
 .menu-mas button{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;text-align:left;cursor:pointer;color:var(--txt);font-size:14px}
 .menu-mas i{font-style:normal;font-size:24px}.menu-mas small{display:block;color:var(--sub);font-size:12px;margin-top:2px}
 .barras{display:flex;gap:6px;align-items:flex-end;height:150px;margin-top:10px}
@@ -210,7 +212,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.8.1';
+const VERSION = '3.9';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -2581,26 +2583,40 @@ function botonesCalendario(t, ini, fin, det, lugar){
 
 /* --- MÁS --- */
 function vistaMas(){
-  const items = [['servicios','💼','Servicios','Lo que ofreces, precio y duración'],
-    ['horarios','🕘','Disponibilidad','Horario automático y días no disponibles'],
-    ['perfil','👤','Perfil, pagos y directorio','Lo que ven tus pacientes'],
-    ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
-    ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron'],
-    ['guia','📘','Guía de consulta y formatos','Documentos a pedir, paso a paso y formatos para firmar'],
-    ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
-    ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)'],
-    ['seguridad','🔐','Seguridad de la cuenta','Verificación en dos pasos'],
-    ['legal','📄','Contrato y exportar mis datos','Contrato de encargado · respaldo completo'],
-    ['suscripcion','💳','Mi suscripción','Vence el ' + fechaCorta(S.prof.activo_hasta) + ' · renovar']];
-  if (S.admin) items.unshift(['admin','👑','Administración','Profesionales, pagos y licencias (LV Studio)']);
-  $('vista').innerHTML = `<h2>Más opciones</h2><div class="menu-mas">${items.map(x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`).join('')}</div>
-  <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte buscando por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
-  <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>`;
+  const p = S.prof;
+  const G = [
+    ['🏥 Mi consultorio', [['perfil','👤','Perfil y página de reservas','Foto, enfoque, pagos, color y directorio'],
+      ['servicios','💼','Servicios','Lo que ofreces, precio, duración y modalidad'],
+      ['horarios','🕘','Disponibilidad','Horario automático y días no disponibles'],
+      ['espera','⏳','Lista de espera','Pacientes esperando un espacio'],
+      ['resenas','⭐','Reseñas verificadas','Opiniones de pacientes que asistieron']]],
+    ['🩺 Clínica', [['guia','📘','Guía de consulta y formatos','Qué pedir, paso a paso y formatos para firmar'],
+      ['plantillas','📋','Plantillas de notas','Tus propios formatos de historia'],
+      ['habeas','🛡️','Solicitudes de datos','Habeas data de tus pacientes (Ley 1581)']]],
+    ['⚙️ Mi cuenta', [['suscripcion','💳','Mi suscripción','Vence el ' + fechaCorta(p.activo_hasta) + ' · renovar'],
+      ['seguridad','🔐','Seguridad','Código al correo o app autenticadora'],
+      ['legal','📄','Contrato y respaldo','Contrato de datos · descargar toda tu información']]]];
+  if (S.admin) G.unshift(['👑 LV Studio', [['admin','👑','Administración','Profesionales, pagos y licencias']]]);
+  const btn = x => `<button onclick="irA('${x[0]}')"><i>${x[1]}</i><span class="grow"><b>${x[2]}</b><small>${x[3]}</small></span><span id="mb-${x[0]}"></span><span class="sub">›</span></button>`;
+  const link = p.slug && p.nombre ? `<div class="card mas-link"><div class="row"><span class="grow"><b>🔗 Tu página de reservas</b><br><small class="sub" style="word-break:break-all">${esc(enlaceReservas())}</small></span></div>
+    <div class="acciones" style="margin-top:8px"><button class="btn sm" onclick="copiar(enlaceReservas())">Copiar</button>
+    <a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent('Agenda tu cita conmigo aquí: ' + enlaceReservas())}">💬 WhatsApp</a>
+    <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(enlaceReservas())}">Ver</a></div></div>`
+    : `<div class="aviso warn" style="cursor:pointer" onclick="irA('perfil')">🔗 Aún no tienes página de reservas. <b>Toca aquí para crear tu enlace</b> en tu perfil.</div>`;
+  $('vista').innerHTML = `<h2>Más opciones</h2>${link}
+  ${G.map(g => `<div class="mas-g">${g[0]}</div><div class="menu-mas">${g[1].map(btn).join('')}</div>`).join('')}
+  <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
+  <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>
+  <p class="mini" style="text-align:center;margin:16px 0 4px">Consulta LV v${VERSION} · ¿Dudas? <a target="_blank" rel="noopener" href="https://wa.me/573202903722?text=${encodeURIComponent('Hola LV Studio, tengo una duda con Consulta LV')}">Escríbenos por WhatsApp</a></p>`;
+  const pon = (k, html) => { const s = $('mb-' + k); if (s && html) s.innerHTML = html; };
   Promise.all([sb.from('lista_espera').select('id', { count: 'exact', head: true }).eq('estado', 'esperando'),
     sb.from('solicitudes_habeas').select('id', { count: 'exact', head: true }).neq('estado', 'respondida')]).then(([e, h]) => {
-    const pon = (k, n, rojo) => { const s = $('mb-' + k); if (s && n) s.innerHTML = `<span class="badge ${rojo ? 'b-bad' : 'b-pend'}">${n}</span>`; };
-    pon('espera', e.count ?? (e.data || []).length); pon('habeas', h.count ?? (h.data || []).length, true);
+    const n1 = e.count ?? (e.data || []).length, n2 = h.count ?? (h.data || []).length;
+    if (n1) pon('espera', `<span class="badge b-pend">${n1}</span>`); if (n2) pon('habeas', `<span class="badge b-bad">${n2}</span>`);
   });
+  estado2FA().then(x => { if (x && !x.metodo) pon('seguridad', '<span class="badge b-bad">Actívala</span>'); });
+  const dr = diasRestantes(); if (dr <= 5) pon('suscripcion', `<span class="badge ${dr < 0 ? 'b-bad' : 'b-pend'}" style="white-space:nowrap">${dr < 0 ? 'Vencida' : dr + ' días'}</span>`);
+  if ('contrato_encargado_at' in p && !p.contrato_encargado_at) pon('legal', '<span class="badge b-pend">Pendiente</span>');
 }
 
 /* --- FINANZAS --- */
