@@ -215,7 +215,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.11';
+const VERSION = '3.11.1';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -884,6 +884,11 @@ function moverAgenda(n){ A.fecha = sumarDias(A.fecha, n * (A.modo === 'dia' ? 1 
 function moverMes(n){ const [y, m] = A.mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); A.mes = d.toISOString().slice(0, 7); cargarAgenda(); }
 function cambiarModo(m){ A.modo = m; cargarAgenda(); }
 
+function detalleCitaFicha(id){
+  const c = P.citas.find(x => x.id === id); if (!c) return;
+  A.citas = A.citas || []; if (!A.citas.some(x => x.id === id)) A.citas.push(Object.assign({}, c, { paciente_id: P.actual.id, pacientes: { nombres: P.actual.nombres, telefono: P.actual.telefono, documento: P.actual.documento } }));
+  detalleCita(id);
+}
 function detalleCita(id){
   const c = A.citas.find(x => x.id === id); if (!c) return;
   const pa = c.pacientes || {}, e = ESTADOS[c.estado] || ['', 'b-gris'], dur = Math.round((new Date(c.fin) - new Date(c.inicio)) / 60000);
@@ -925,14 +930,20 @@ function enlaceRecordatorio(c){
 async function estadoCita(id, estado){
   if (estado === 'cancelada' && !confirm('¿Cancelar esta cita? El horario quedará libre.')) return;
   cerrarModal();
-  const { error } = await sb.from('citas').update({ estado }).eq('id', id);
+  const { data, error } = await sb.from('citas').update({ estado }).eq('id', id).select('id,estado');
   if (error) { toast(mensajeError(error), true); return; }
-  toast('Cita actualizada'); if (estado === 'cancelada') avisarEspera(); refrescarVista();
+  if (!data || !data.length) { toast('No se pudo actualizar la cita. Cierra sesión, entra de nuevo e inténtalo otra vez.', true); return; }
+  actualizarCitaLocal(id, { estado: data[0].estado });
+  toast('Cita actualizada: ' + ((ESTADOS[estado] || [estado])[0])); if (estado === 'cancelada') avisarEspera(); refrescarTodo();
 }
+function actualizarCitaLocal(id, cambios){ [A.citas, P.citas, FIN.citas].forEach(l => (l || []).forEach(c => { if (c.id === id) Object.assign(c, cambios); })); }
+function refrescarTodo(){ if (S.vista === 'pacientes' && P.actual) abrirFicha(P.actual.id); else refrescarVista(); }
 async function pagoCita(id, pagado, metodo){
-  const { error } = await sb.from('citas').update({ pagado, metodo_pago: pagado ? (metodo || '') : '' }).eq('id', id);
+  const { data, error } = await sb.from('citas').update({ pagado, metodo_pago: pagado ? (metodo || '') : '' }).eq('id', id).select('id');
   if (error) { toast(mensajeError(error), true); return; }
-  cerrarModal(); toast(pagado ? 'Marcada como pagada 💵' : 'Pago desmarcado'); refrescarVista();
+  if (!data || !data.length) { toast('No se pudo actualizar el pago. Cierra sesión y vuelve a entrar.', true); return; }
+  actualizarCitaLocal(id, { pagado, metodo_pago: pagado ? (metodo || '') : '' });
+  cerrarModal(); toast(pagado ? 'Marcada como pagada 💵' : 'Pago desmarcado'); refrescarTodo();
 }
 function copiar(t){ (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Copiado ✅')).catch(() => prompt('Copia el enlace:', t)); }
 
@@ -1303,7 +1314,7 @@ async function abrirFicha(id, sinHistoria){
     sb.from('pacientes').select('*').eq('id', id).single(),
     sb.from('notas_clinicas').select('*').eq('paciente_id', id).order('fecha', { ascending: false }).order('created_at', { ascending: false }),
     sb.from('escalas').select('*').eq('paciente_id', id).order('fecha', { ascending: true }).order('created_at', { ascending: true }),
-    sb.from('citas').select('id,inicio,estado,valor,pagado,origen,servicios(nombre)').eq('paciente_id', id).order('inicio', { ascending: false })]);
+    sb.from('citas').select('*,servicios(nombre)').eq('paciente_id', id).order('inicio', { ascending: false })]);
   const err = pa.error || no.error || es.error || ci.error;
   if (err) { $('vista').innerHTML = `<div class="aviso err">${esc(mensajeError(err))}</div>`; return; }
   sb.rpc('registrar_acceso', { p_tabla: 'pacientes', p_id: id });
@@ -1559,7 +1570,7 @@ function tabEscalas(){
 function tabCitas(){
   const c = $('ficha-c');
   c.innerHTML = '<div id="paq-f"></div>' + (P.citas.length ? P.citas.map(x => { const e = ESTADOS[x.estado] || ['', 'b-gris'];
-    return `<div class="card"><div class="row"><div class="grow"><b>${esc(fecha(x.inicio,{weekday:'short',day:'numeric',month:'short',year:'numeric'}))} · ${esc(hora(x.inicio))}</b>
+    return `<div class="card" style="cursor:pointer" onclick="detalleCitaFicha('${x.id}')"><div class="row"><div class="grow"><b>${esc(fecha(x.inicio,{weekday:'short',day:'numeric',month:'short',year:'numeric'}))} · ${esc(hora(x.inicio))}</b>
     <div class="sub">${esc((x.servicios && x.servicios.nombre) || 'Cita')}${x.valor ? ' · ' + peso(x.valor) : ''} · ${x.pagado ? '✓ pagada' : 'sin pago'}</div></div><span class="badge ${e[1]}">${e[0]}</span></div></div>`; }).join('')
     : `<div class="empty">Sin citas. Usa "📅 Agendar".</div>`);
   htmlPaquetesFicha();
