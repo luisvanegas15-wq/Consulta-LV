@@ -234,7 +234,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.19';
+const VERSION = '3.20';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -2403,7 +2403,7 @@ function htmlCapacidad(){
   const pDb = c.db_bytes / L.db * 100, pAr = c.archivos_bytes / L.arch * 100, peor = Math.max(pDb, pAr);
   const col = p => p >= 90 ? '#dc2626' : p >= 70 ? '#d97706' : '#059669';
   const est = p => p >= 90 ? '🔴 Crítico' : p >= 70 ? '🟠 Alerta' : '🟢 Normal';
-  const porProf = c.profesionales ? c.db_bytes / c.profesionales : 0;
+  const datos = (c.tablas || []).reduce((a, t) => a + (+t.bytes || 0), 0), porProf = c.profesionales ? Math.max(datos / c.profesionales, 1048576) : 0;
   const caben = porProf ? Math.max(0, Math.floor((L.db * 0.9 - c.db_bytes) / porProf)) : null;
   const medidor = (t, u, lim, p) => `<div style="margin:10px 0"><div class="row" style="font-size:13px"><b class="grow">${t}</b><span>${est(p)}</span></div>
     <div style="height:12px;background:#e8eef4;border-radius:99px;overflow:hidden;margin:6px 0"><div style="height:100%;width:${Math.min(100, Math.max(1, p)).toFixed(1)}%;background:${col(p)};border-radius:99px"></div></div>
@@ -2415,7 +2415,7 @@ function htmlCapacidad(){
     ${c.plan !== 'pro' ? '<div class="aviso info" style="margin-top:10px;font-size:12px">Plan Gratis: el proyecto se pausa tras 7 días sin uso y no tiene copias de seguridad automáticas.</div>' : ''}
     ${medidor('🗄️ Base de datos', c.db_bytes, L.db, pDb)}${medidor('📎 Archivos adjuntos y fotos', c.archivos_bytes, L.arch, pAr)}
     <div class="fin-pac" style="margin-top:12px"><div><b style="font-size:18px">${(+c.profesionales).toLocaleString('es-CO')}</b><span>Profesionales</span></div><div><b style="font-size:18px">${(+c.pacientes).toLocaleString('es-CO')}</b><span>Pacientes</span></div><div><b style="font-size:18px">${(+c.citas).toLocaleString('es-CO')}</b><span>Citas</span></div><div><b style="font-size:18px">${(+c.notas).toLocaleString('es-CO')}</b><span>Notas</span></div></div>
-    <div style="font-size:13px;line-height:1.8;margin-top:10px">📐 Promedio por profesional: <b>${tamanoCap(porProf)}</b> · ${c.archivos} archivo(s)${caben != null ? `<br>➕ Capacidad estimada: caben unos <b>${caben.toLocaleString('es-CO')}</b> profesionales más con el uso actual` : ''}</div>
+    <div style="font-size:13px;line-height:1.8;margin-top:10px">📐 Datos por profesional: <b>${tamanoCap(porProf)}</b> · ${c.archivos} archivo(s)<br><span class="sub" style="font-size:12px">⚙️ Base fija del sistema (Supabase): ${tamanoCap(Math.max(0, c.db_bytes - datos))}</span>${caben != null ? `<br>➕ Capacidad estimada: caben unos <b>${caben.toLocaleString('es-CO')}</b> profesionales más con el uso actual${c.profesionales < 10 ? ' <span class="sub" style="font-size:12px">(estimado preliminar: se vuelve más preciso con más profesionales)</span>' : ''}` : ''}</div>
     <details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Ver detalle</summary>
       <h4 style="margin:10px 0 4px">Tablas más pesadas</h4>${(c.tablas || []).map(t => `<div class="franja"><span>${esc(t.tabla)}</span><b>${tamanoCap(t.bytes)}</b></div>`).join('')}
       ${(c.top_archivos || []).length ? `<h4 style="margin:10px 0 4px">Quién usa más archivos</h4>${c.top_archivos.map(t => `<div class="franja"><span>${esc(t.nombre || t.email)} <small class="sub">(${t.n})</small></span><b>${tamanoCap(t.bytes)}</b></div>`).join('')}` : ''}
