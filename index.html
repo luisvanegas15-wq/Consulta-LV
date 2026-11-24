@@ -215,7 +215,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.12';
+const VERSION = '3.13';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -920,7 +920,7 @@ function detalleCita(id){
     ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="pedirResena('${c.id}')">⭐ Pedir reseña</button>` : ''}
     ${c.estado === 'asistio' ? `<button class="btn sm ghost" onclick="cerrarModal();formConstancia('${c.paciente_id}','${c.id}')">🧾 Constancia</button>` : ''}
   </div>
-  ${activa ? `<div class="acciones"><button class="btn sm ghost" onclick="estadoCita('${c.id}','asistio')">Asistió</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','no_asistio')">No asistió</button><button class="btn sm red" onclick="estadoCita('${c.id}','cancelada')">Cancelar cita</button></div>
+  ${activa ? `<div class="acciones"><button class="btn sm" onclick="formReprogramar('${c.id}')">🔄 Reprogramar</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','asistio')">Asistió</button><button class="btn sm ghost" onclick="estadoCita('${c.id}','no_asistio')">No asistió</button><button class="btn sm red" onclick="estadoCita('${c.id}','cancelada')">Cancelar cita</button></div>
     ${c.serie ? `<button class="btn sm red" style="margin-top:6px" onclick="cancelarSerie('${c.serie}','${c.inicio}')">Cancelar esta y las siguientes de la serie</button>` : ''}` : ''}
   <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
 }
@@ -928,6 +928,40 @@ function enlaceRecordatorio(c){
   const pa = c.pacientes || {}, p = S.prof;
   const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}${c.token_paciente ? 'Confirma, cancela o cambia la hora aquí: ' + urlPublica('?c=' + c.token_paciente) + ' . ' : '¿Me confirmas tu asistencia? '}${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
   return 'https://wa.me/' + waNum(pa.telefono) + '?text=' + encodeURIComponent(t);
+}
+/* --- REPROGRAMAR (profesional) --- */
+function formReprogramar(id){
+  const c = A.citas.find(x => x.id === id); if (!c) return;
+  const pa = c.pacientes || {}, b = bog(c.inicio), dur = Math.round((new Date(c.fin) - new Date(c.inicio)) / 60000);
+  const hh = String(Math.floor(b.min / 60)).padStart(2, '0') + ':' + String(b.min % 60).padStart(2, '0');
+  abrirModal(`<h3>🔄 Reprogramar cita</h3>
+  <p class="sub" style="margin-top:0">${esc(pa.nombres || 'Paciente')} · ${esc((c.servicios || {}).nombre || 'Cita')} · ${dur} min<br>Actual: <b>${esc(fecha(c.inicio, { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(hora(c.inicio))}</b></p>
+  <div class="fila"><div><label>Nueva fecha</label><input id="rp-fecha" type="date" value="${esc(b.ymd)}" min="${esc(hoyYMD())}"></div><div><label>Nueva hora</label><input id="rp-hora" type="time" value="${esc(hh)}" step="900"></div></div>
+  ${pa.telefono ? `<label class="check"><input type="checkbox" id="rp-wa" checked><span>Avisar al paciente por WhatsApp</span></label>` : ''}
+  <button class="btn full" id="rp-btn" onclick="guardarReprogramar('${c.id}')">Guardar nueva fecha</button>
+  <button class="btn full ghost" onclick="detalleCita('${c.id}')">Volver</button>`);
+}
+async function guardarReprogramar(id){
+  const c = A.citas.find(x => x.id === id); if (!c) return;
+  const f = $('rp-fecha').value, h = $('rp-hora').value;
+  if (!f || !h) { toast('Elige fecha y hora', true); return; }
+  const ini = new Date(`${f}T${h}:00-05:00`), fin = new Date(ini.getTime() + (new Date(c.fin) - new Date(c.inicio)));
+  if (ini < new Date()) { toast('La nueva hora ya pasó', true); return; }
+  if (ini.getTime() === new Date(c.inicio).getTime()) { toast('Es la misma fecha y hora', true); return; }
+  const avisar = $('rp-wa') && $('rp-wa').checked, antes = c.inicio;
+  $('rp-btn').disabled = true; $('rp-btn').textContent = 'Guardando…';
+  const { data, error } = await sb.from('citas').update({ inicio: ini.toISOString(), fin: fin.toISOString(), recordatorio_at: null }).eq('id', id).select('id');
+  if (error || !data || !data.length) { $('rp-btn').disabled = false; $('rp-btn').textContent = 'Guardar nueva fecha'; toast(error ? mensajeError(error) : 'No se pudo reprogramar', true); return; }
+  cerrarModal(); toast('Cita reprogramada 🔄');
+  if (avisar) {
+    const pa = c.pacientes || {};
+    const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} del ${fecha(antes, { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hora(antes)} quedó reprogramada para el ${fecha(ini.toISOString(), { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hora(ini.toISOString())}. ${c.token_paciente ? 'Puedes confirmar o cambiarla aquí: ' + urlPublica('?c=' + c.token_paciente) + ' ' : ''}¡Te espero!`;
+    setTimeout(() => abrirModal(`<h3>🔄 Cita reprogramada</h3><p style="font-size:14px">Nueva fecha: <b>${esc(fecha(ini.toISOString(), { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(hora(ini.toISOString()))}</b></p>
+      <a class="btn full" style="background:#16a34a" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(t)}" onclick="setTimeout(cerrarModal,300)">💬 Avisar por WhatsApp</a>
+      <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`), 250);
+  }
+  A.fecha = f; A.mes = f.slice(0, 7);
+  if (S.vista === 'agenda') cargarAgenda(); else if (S.vista === 'inicio') vistaInicio();
 }
 async function estadoCita(id, estado){
   if (estado === 'cancelada' && !confirm('¿Cancelar esta cita? El horario quedará libre.')) return;
