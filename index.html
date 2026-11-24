@@ -234,7 +234,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.18';
+const VERSION = '3.19';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -2391,6 +2391,40 @@ async function vistaAdmin(){
   const { data, error } = await sb.rpc('admin_resumen');
   if (error) { $('adm-c').innerHTML = `<div class="aviso err">No autorizado o falta la actualización v9.</div>`; return; }
   ADM.datos = data; pintarAdmin();
+  const cap = await sb.rpc('admin_capacidad'); ADM.cap = cap.error ? { error: true } : cap.data; pintarAdmin();
+}
+const CAP_LIM = { free: { db: 500 * 1048576, arch: 1024 * 1048576, nombre: 'Gratis' }, pro: { db: 8192 * 1048576, arch: 100 * 1024 * 1048576, nombre: 'Pro' } };
+function tamanoCap(b){ b = +b || 0; return b >= 1073741824 ? (b / 1073741824).toLocaleString('es-CO', { maximumFractionDigits: 2 }) + ' GB' : b >= 1048576 ? (b / 1048576).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' MB' : Math.round(b / 1024) + ' KB'; }
+function htmlCapacidad(){
+  const c = ADM.cap;
+  if (!c) return `<div class="card"><h3>🖥️ Capacidad del servidor</h3><div class="carga">Midiendo…</div></div>`;
+  if (c.error) return `<div class="card"><h3>🖥️ Capacidad del servidor</h3><div class="aviso warn">Falta aplicar la actualización <b>v16.sql</b> en Supabase para ver el medidor.</div></div>`;
+  const L = CAP_LIM[c.plan] || CAP_LIM.free;
+  const pDb = c.db_bytes / L.db * 100, pAr = c.archivos_bytes / L.arch * 100, peor = Math.max(pDb, pAr);
+  const col = p => p >= 90 ? '#dc2626' : p >= 70 ? '#d97706' : '#059669';
+  const est = p => p >= 90 ? '🔴 Crítico' : p >= 70 ? '🟠 Alerta' : '🟢 Normal';
+  const porProf = c.profesionales ? c.db_bytes / c.profesionales : 0;
+  const caben = porProf ? Math.max(0, Math.floor((L.db * 0.9 - c.db_bytes) / porProf)) : null;
+  const medidor = (t, u, lim, p) => `<div style="margin:10px 0"><div class="row" style="font-size:13px"><b class="grow">${t}</b><span>${est(p)}</span></div>
+    <div style="height:12px;background:#e8eef4;border-radius:99px;overflow:hidden;margin:6px 0"><div style="height:100%;width:${Math.min(100, Math.max(1, p)).toFixed(1)}%;background:${col(p)};border-radius:99px"></div></div>
+    <div class="sub" style="font-size:12px">${tamanoCap(u)} de ${tamanoCap(lim)} · <b style="color:${col(p)}">${p.toFixed(1)}%</b></div></div>`;
+  return `<div class="card" ${peor >= 70 ? `style="border:2px solid ${col(peor)}"` : ''}><div class="row"><h3 class="grow" style="margin:0">🖥️ Capacidad del servidor</h3>
+    <select style="width:auto;margin:0" onchange="cambiarPlanSB(this.value)"><option value="free" ${c.plan !== 'pro' ? 'selected' : ''}>Plan Gratis</option><option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Plan Pro</option></select></div>
+    ${peor >= 90 ? `<div class="aviso err" style="margin-top:10px">🔴 El servidor está casi lleno. ${c.plan === 'pro' ? 'Amplía el disco en Supabase.' : 'Pasa al plan Pro de Supabase cuanto antes para no perder registros nuevos.'}</div>`
+      : peor >= 70 ? `<div class="aviso warn" style="margin-top:10px">🟠 Superaste el 70% de capacidad. ${c.plan === 'pro' ? 'Revisa el uso en Supabase.' : 'Planea pasar al plan Pro de Supabase (USD 25/mes).'}</div>` : ''}
+    ${c.plan !== 'pro' ? '<div class="aviso info" style="margin-top:10px;font-size:12px">Plan Gratis: el proyecto se pausa tras 7 días sin uso y no tiene copias de seguridad automáticas.</div>' : ''}
+    ${medidor('🗄️ Base de datos', c.db_bytes, L.db, pDb)}${medidor('📎 Archivos adjuntos y fotos', c.archivos_bytes, L.arch, pAr)}
+    <div class="fin-pac" style="margin-top:12px"><div><b style="font-size:18px">${(+c.profesionales).toLocaleString('es-CO')}</b><span>Profesionales</span></div><div><b style="font-size:18px">${(+c.pacientes).toLocaleString('es-CO')}</b><span>Pacientes</span></div><div><b style="font-size:18px">${(+c.citas).toLocaleString('es-CO')}</b><span>Citas</span></div><div><b style="font-size:18px">${(+c.notas).toLocaleString('es-CO')}</b><span>Notas</span></div></div>
+    <div style="font-size:13px;line-height:1.8;margin-top:10px">📐 Promedio por profesional: <b>${tamanoCap(porProf)}</b> · ${c.archivos} archivo(s)${caben != null ? `<br>➕ Capacidad estimada: caben unos <b>${caben.toLocaleString('es-CO')}</b> profesionales más con el uso actual` : ''}</div>
+    <details style="margin-top:8px"><summary class="sub" style="cursor:pointer">Ver detalle</summary>
+      <h4 style="margin:10px 0 4px">Tablas más pesadas</h4>${(c.tablas || []).map(t => `<div class="franja"><span>${esc(t.tabla)}</span><b>${tamanoCap(t.bytes)}</b></div>`).join('')}
+      ${(c.top_archivos || []).length ? `<h4 style="margin:10px 0 4px">Quién usa más archivos</h4>${c.top_archivos.map(t => `<div class="franja"><span>${esc(t.nombre || t.email)} <small class="sub">(${t.n})</small></span><b>${tamanoCap(t.bytes)}</b></div>`).join('')}` : ''}
+      <button class="btn sm ghost" style="margin-top:8px" onclick="ADM.cap=null;pintarAdmin();sb.rpc('admin_capacidad').then(r=>{ADM.cap=r.error?{error:true}:r.data;pintarAdmin()})">🔄 Actualizar medición</button></details></div>`;
+}
+async function cambiarPlanSB(p){
+  const { error } = await sb.rpc('admin_plan', { p_plan: p });
+  if (error) { toast(mensajeError(error), true); return; }
+  ADM.cap.plan = p; pintarAdmin(); toast('Plan actualizado: ' + CAP_LIM[p].nombre);
 }
 function pintarAdmin(){
   const box = $('adm-c'); if (!box || !ADM.datos) return;
@@ -2402,6 +2436,7 @@ function pintarAdmin(){
   const lista = ps.filter(p => (ADM.ver === 'todos' || (ADM.ver === 'vencer' ? dias(p) >= 0 && dias(p) <= 5 : tipo(p) === ADM.ver)) && (!f || `${p.nombre} ${p.email} ${p.ciudad}`.toLowerCase().includes(f)));
   const tile = (k, t, val, c) => `<button class="card adm-t ${ADM.ver === k ? 'on' : ''}" onclick="ADM.ver='${k}';pintarAdmin()"><b style="font-size:24px;color:${c}">${val}</b><small>${t}</small></button>`;
   box.innerHTML = `<div class="adm-g">${tile('pagos', 'Pagando', n('pagos'), '#059669')}${tile('prueba', 'En prueba', n('prueba'), '#2563eb')}${tile('vencer', 'Vencen en 5 días', porVencer, '#d97706')}${tile('vencidos', 'Vencidos', n('vencidos'), '#dc2626')}</div>
+  ${htmlCapacidad()}
   <div class="card row"><span class="grow">💰 Ingresos del mes<br><small class="sub">Total histórico: ${pesos(d.ingresos_total)}</small></span><b style="font-size:22px">${pesos(d.ingresos_mes)}</b></div>
   ${(d.pendientes || []).length ? `<div class="card" style="border:2px solid #f59e0b"><h3>🕓 Pagos por confirmar (${d.pendientes.length})</h3>${d.pendientes.map(r => `<div style="padding:10px 0;border-bottom:1px solid #e2e8f0">
       <b>${esc(r.nombre || 'Sin nombre')}</b> · <span class="sub">${esc(r.email)}</span><br>
