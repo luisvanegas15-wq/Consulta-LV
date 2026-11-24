@@ -221,6 +221,9 @@ body.con-modal{overflow:hidden}
 @keyframes ringin{from{stroke-dasharray:0 999}}.anim-ring{animation:ringin .9s ease-out}
 @media(prefers-reduced-motion:reduce){.anim-ring{animation:none}}
 @media(max-width:380px){.fin-hero{flex-direction:column;text-align:center}.fin-pac b{font-size:18px}}
+#demo-barra{position:fixed;top:0;left:0;right:0;z-index:1500;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;background:#f59e0b;color:#1f1300;font-size:12.5px;padding:calc(env(safe-area-inset-top) + 5px) 10px 5px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+#demo-barra a{background:#1f1300;color:#fff;border-radius:999px;padding:3px 10px;text-decoration:none;font-weight:700}
+body.con-demo{padding-top:32px}
 </style>
 </head>
 <body>
@@ -234,9 +237,10 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.21';
+const VERSION = '3.22';
 
-const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+let DEMO = false;
+let sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
 const SLUG = (new URLSearchParams(location.search).get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 
@@ -575,6 +579,7 @@ function pantallaAcceso(modo){
     <button class="btn full" id="a-btn" onclick="${modo==='crear'?'crearCuenta()':'ingresar()'}">${modo==='crear'?'Crear cuenta · 14 días gratis':'Ingresar'}</button>
     ${modo==='entrar' ? `<button class="btn full ghost" onclick="recuperar()">Olvidé mi contraseña</button>` : ''}
   </div>
+  <a class="btn full" href="${esc(urlPublica('?demo=1'))}" style="margin-bottom:10px;background:linear-gradient(135deg,#f59e0b,#ea580c)">👀 Probar la demo sin registrarte</a>
   <a class="btn full ghost" href="${esc(urlPublica('?dir=1'))}" style="margin-bottom:10px">🔎 ¿Buscas psicólogo? Ver directorio</a>
   <a class="btn full ghost" href="ventas.html" style="margin-bottom:10px">✨ ¿Qué es Consulta LV? Planes y beneficios</a>
   <p class="mini" style="text-align:center"><a href="terminos.html" target="_blank" rel="noopener">Términos y condiciones · Política de privacidad</a></p>
@@ -618,7 +623,7 @@ async function guardarNuevaClave(){
   if (error) { toast(mensajeError(error), true); return; }
   toast('Contraseña actualizada ✅'); marcarActividad(); entrarConMFA();
 }
-async function salir(msg){ C.dk = null; C.priv = null; try { cerrarModal(); } catch (e) {} if (typeof P === 'object') { P.actual = null; P.notas = []; P.escalas = []; P.docs = []; P.formularios = []; } await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
+async function salir(msg){ if (DEMO) { location.href = location.pathname; return; } C.dk = null; C.priv = null; try { cerrarModal(); } catch (e) {} if (typeof P === 'object') { P.actual = null; P.notas = []; P.escalas = []; P.docs = []; P.formularios = []; } await sb.auth.signOut(); S.prof = null; pantallaAcceso('entrar'); if (msg) toast(msg); }
 
 /* --- cierre por inactividad --- */
 let tInact;
@@ -3854,6 +3859,8 @@ function htmlResenasPublicas(p){
 
 /* ===== INICIO ===== */
 (async function iniciar(){
+  const QS = new URLSearchParams(location.search);
+  if (QS.has('demo')) { iniciarDemo(); return; }
   if (RTOKEN) { paginaResena(); return; }
   if (FTOKEN) { paginaFormulario(); return; }
   if (CTOKEN) { paginaCita(); return; }
@@ -3863,8 +3870,30 @@ function htmlResenasPublicas(p){
   if (/type=recovery/.test(location.hash)) return;
   const { data: { session } } = await sb.auth.getSession();
   if (session && inactivoDemasiado()) { await sb.auth.signOut(); pantallaAcceso('entrar'); toast('Por seguridad, la sesión se cerró por inactividad 🔒'); return; }
-  if (session) entrarConMFA(); else pantallaAcceso('entrar');
+  if (session) entrarConMFA(); else pantallaAcceso(QS.has('registro') ? 'crear' : 'entrar');
 })();
+
+/* ===== MODO DEMO: datos ficticios en memoria, sin servidor ===== */
+async function iniciarDemo(){
+  app.innerHTML = `<div class="carga" style="padding-top:80px">👀 Preparando la demo con datos ficticios…</div>`;
+  try {
+    if (!window.crearDemoSB) await new Promise((ok, ko) => { const t = document.createElement('script'); t.src = 'demo.js?v=' + VERSION; t.onload = ok; t.onerror = ko; document.head.appendChild(t); });
+    DEMO = true; sb = window.crearDemoSB();
+    C.dk = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    await window.sembrarDemo(cifrar, TERMINOS_V);
+  } catch (e) { app.innerHTML = `<div class="wrap"><div class="aviso err" style="margin-top:40px">No se pudo abrir la demo. Revisa tu conexión e intenta de nuevo.</div><a class="btn full" href="${esc(location.pathname)}">Volver</a></div>`; return; }
+  const b = document.createElement('div'); b.id = 'demo-barra';
+  b.innerHTML = `<span>👀 <b>DEMO</b> · datos ficticios, nada se guarda</span><a href="${esc(location.pathname + '?registro=1')}">Crear mi cuenta</a>`;
+  document.body.appendChild(b); document.body.classList.add('con-demo');
+  document.addEventListener('click', e => { const l = e.target.closest && e.target.closest('a[href*="?p="],a[href*="?c="]'); if (l) { e.preventDefault(); toast('En la demo la página pública no está disponible. Crea tu cuenta para tener la tuya 🙂'); } }, true);
+  await abrirPanel();
+  setTimeout(() => abrirModal(`<div style="text-align:center"><div style="font-size:50px">👋</div><h3 style="font-size:20px;margin:6px 0">Bienvenido(a) a la demo</h3>
+    <p style="font-size:15px;line-height:1.6">Estás viendo el consultorio de una psicóloga <b>ficticia</b>, con pacientes, citas, historias clínicas y finanzas de ejemplo.</p>
+    <p style="font-size:14px;line-height:1.6">Puedes tocar todo: agendar, escribir notas, dictar, ver el tablero de Finanzas o generar el informe gerencial. <b>Nada se guarda</b>: al cerrar o recargar, la demo vuelve a empezar.</p>
+    <p class="mini">La clave de historia clínica ya está desbloqueada para que explores libremente.</p>
+    <button class="btn full" onclick="cerrarModal()">Explorar la demo</button>
+    <a class="btn full ghost" href="${esc(location.pathname + '?registro=1')}">Crear mi cuenta · 14 días gratis</a></div>`), 500);
+}
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 </script>
