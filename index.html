@@ -234,7 +234,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.17';
+const VERSION = '3.18';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -3183,7 +3183,7 @@ async function vistaFinanzas(){
   FIN.paq = pq && !pq.error ? (pq.data || []) : [];
   if (c.error || g.error) { box.innerHTML = `<div class="aviso err">${esc(mensajeError(c.error || g.error))}</div>`; return; }
   FIN.citas = c.data || []; FIN.gastos = g.data || [];
-  const nuevosPac = pn && !pn.error ? (pn.data || []) : [];
+  const nuevosPac = pn && !pn.error ? (pn.data || []) : []; FIN.nuevos = nuevosPac;
   const E = ym => finStats(ym, nuevosPac), A0 = E(m), A1 = E(prev);
   const cm = A0.cm, gm = A0.gm, porCobrar = A0.porCobrar;
   const meses = [0, 1, 2, 3, 4, 5].map(i => mesSum(ini, i)).map(ym => { const x = E(ym); return { ym, ing: x.cobrado, gas: x.gastos }; });
@@ -3202,7 +3202,7 @@ async function vistaFinanzas(){
     ${kpiFin('Gastos', A0.gastos, A1.gastos, 'var(--bad)', false)}
     ${kpiFin('Utilidad', A0.util, A1.util, A0.util >= 0 ? '#059669' : 'var(--bad)', true)}
     ${kpiFin('Por cobrar', suma(porCobrar), null, '#d97706', false, "document.getElementById('fin-cobrar').scrollIntoView({behavior:'smooth'})")}</div>
-  <div class="acciones" style="margin-bottom:12px"><button class="btn sm" onclick="formGasto()">+ Registrar gasto</button><button class="btn sm ghost" onclick="exportarFinanzas()">⬇️ Exportar a Excel (CSV)</button><button class="btn sm ghost" onclick="irA('estadisticas')">📈 Estadísticas</button></div>
+  <div class="acciones" style="margin-bottom:12px"><button class="btn sm" onclick="formGasto()">+ Registrar gasto</button><button class="btn sm ghost" onclick="informeFinanzas()">🖨️ Informe gerencial</button><button class="btn sm ghost" onclick="exportarFinanzas()">⬇️ Exportar a Excel (CSV)</button><button class="btn sm ghost" onclick="irA('estadisticas')">📈 Estadísticas</button></div>
   <div class="card"><h3>Ingresos, gastos y utilidad · 6 meses</h3>${grafico6m(meses, m)}
     <div class="leyenda" style="margin-top:6px"><span><i style="background:#2a78d6"></i>Ingresos</span><span><i style="background:#eb6834"></i>Gastos</span><span><i style="background:#0f172a;height:3px;vertical-align:3px"></i>Utilidad</span></div></div>
   <div class="fin-2">
@@ -3230,6 +3230,64 @@ async function vistaFinanzas(){
   h += `<h2>Gastos del mes (${gm.length})</h2>` + (gm.length ? `<div class="card">${gm.map(x => `<div class="franja"><span class="grow">${esc(CAT_GASTO[x.categoria] || x.categoria)} · ${esc(x.concepto)}<br><small class="sub">${esc(x.fecha)}</small></span><b style="margin:0 10px">${esc(peso(x.valor))}</b><button class="btn sm red" onclick="borrarGasto('${x.id}')">✕</button></div>`).join('')}</div>`
     : `<div class="empty">Sin gastos registrados. Registra arriendo, publicidad o software para conocer tu utilidad real.</div>`);
   box.innerHTML = h; htmlPorCobrarTodo(); finTooltips();
+}
+
+/* --- INFORME GERENCIAL (imprimible / PDF) --- */
+function informeFinanzas(){
+  if (!FIN.citas) { toast('Espera a que cargue el tablero', true); return; }
+  const w = window.open('', '_blank');
+  if (!w) { toast('Permite las ventanas emergentes para generar el informe', true); return; }
+  const m = FIN.mes, prev = mesSum(m, -1), pr = S.prof || {}, nv = FIN.nuevos || [];
+  const A0 = finStats(m, nv), A1 = finStats(prev, nv), meta = finMeta();
+  const meses = [5, 4, 3, 2, 1, 0].map(i => mesSum(m, -i)).map(ym => { const x = finStats(ym); return { ym, ing: x.cobrado, gas: x.gastos, x }; });
+  const signo = v => (v < 0 ? '−' : '') + peso(Math.abs(v));
+  const dP = (a, b, bueno) => { if (!b) return a ? 'nuevo' : '—'; const p = Math.round((a - b) / Math.abs(b) * 100); return p === 0 ? '=' : `<span style="color:${(p > 0) === bueno ? '#047857' : '#b91c1c'}">${p > 0 ? '▲' : '▼'} ${Math.abs(p)}%</span>`; };
+  // Conclusiones automáticas
+  const C = [];
+  if (meta) C.push(A0.cobrado >= meta ? `Se cumplió la meta del mes (${Math.round(A0.cobrado / meta * 100)}%).` : `Se alcanzó el ${Math.round(A0.cobrado / meta * 100)}% de la meta; faltan ${peso(meta - A0.cobrado)}.`);
+  if (A1.cobrado) C.push(`Los ingresos ${A0.cobrado >= A1.cobrado ? 'subieron' : 'bajaron'} ${Math.abs(Math.round((A0.cobrado - A1.cobrado) / A1.cobrado * 100))}% frente a ${nombreMes(prev).toLowerCase()}.`);
+  const mejor = meses.slice().sort((a, b) => b.ing - a.ing)[0]; if (mejor && mejor.ing) C.push(`Mejor mes del semestre: ${nombreMes(mejor.ym).toLowerCase()} con ${peso(mejor.ing)}.`);
+  if (A0.asis + A0.noAsis) C.push(A0.tasaAsis >= 85 ? `Asistencia alta (${A0.tasaAsis}%).` : `La asistencia fue de ${A0.tasaAsis}%: conviene reforzar los recordatorios del día anterior.`);
+  if (A0.asis && A0.tasaCobro < 80) C.push(`Solo el ${A0.tasaCobro}% de las sesiones atendidas está pagado; hay ${peso(suma(A0.porCobrar))} por cobrar.`);
+  if (A0.gastos && A0.cobrado) C.push(`Los gastos representan el ${Math.round(A0.gastos / A0.cobrado * 100)}% de los ingresos (margen ${Math.round(A0.util / A0.cobrado * 100)}%).`);
+  if (A0.nuevos) C.push(`Ingresaron ${A0.nuevos} paciente${A0.nuevos > 1 ? 's' : ''} nuevo${A0.nuevos > 1 ? 's' : ''}.`);
+  const gastosCat = A0.gm.reduce((o, x) => { const k = CAT_GASTO[x.categoria] || x.categoria; o[k] = (o[k] || 0) + (x.valor || 0); return o; }, {});
+  const kpi = (t, v, d, col) => `<div class="k"><small>${t}</small><b style="color:${col || '#0f172a'}">${v}</b><span>${d || '&nbsp;'}</span></div>`;
+  w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Informe gerencial ${esc(nombreMes(m))} - ${esc(pr.nombre || '')}</title>
+  <style>@page{size:A4;margin:14mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;margin:0 auto;max-width:800px;padding:20px;font-size:12px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .top{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0e7490;padding-bottom:10px}h1{margin:0;font-size:20px}.top small{color:#64748b}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#0e7490;margin:20px 0 8px}
+  .ks{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.k{border:1px solid #e2e8f0;border-radius:8px;padding:10px}.k small{display:block;color:#64748b;font-size:10.5px}.k b{display:block;font-size:17px;margin:3px 0}.k span{font-size:10.5px}
+  .fila{display:grid;grid-template-columns:1fr 1fr;gap:12px}.box{border:1px solid #e2e8f0;border-radius:8px;padding:12px;page-break-inside:avoid}
+  .an{display:flex;align-items:center;gap:12px}.dona{display:flex;gap:12px;align-items:center}.dona-l{flex:1;font-size:11px}.dona-l>div{display:flex;gap:6px;align-items:center;padding:3px 0;border-bottom:1px solid #eef2f6}
+  .dona-l i{width:9px;height:9px;border-radius:2px}.dona-l span{flex:1}.dona-l em{font-style:normal;text-align:right}.dona-l em b{display:block}.dona-l em small{color:#64748b}
+  table{width:100%;border-collapse:collapse;font-size:11px}th,td{padding:6px 5px;border-bottom:1px solid #e2e8f0;text-align:right}th:first-child,td:first-child{text-align:left}th{background:#f1f5f9;font-size:10.5px}tr.on td{font-weight:bold;background:#f0f9ff}
+  ul{margin:0;padding-left:18px;line-height:1.7}.ley{display:flex;gap:12px;font-size:10.5px;color:#475569;margin-top:4px}.ley i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px}
+  .pie{margin-top:22px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:9.5px;color:#64748b}.btns{text-align:center;margin:16px 0}.btns button{background:#0e7490;color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:14px;cursor:pointer}
+  @media print{.btns{display:none}body{padding:0}}</style></head><body>
+  <div class="btns"><button onclick="window.print()">🖨️ Imprimir o guardar como PDF</button></div>
+  <div class="top"><div><h1>Informe gerencial · ${esc(nombreMes(m))}</h1><div>${esc(pr.nombre || '')}${pr.titulo ? ' · ' + esc(pr.titulo) : ''}${pr.tarjeta_profesional ? ' · T.P. ' + esc(pr.tarjeta_profesional) : ''}</div></div>
+    <small>Generado el ${esc(fecha(new Date().toISOString(), { dateStyle: 'long' }))}<br>Consulta LV</small></div>
+  <h2>Resumen del mes</h2>
+  <div class="ks">${kpi('Ingresos cobrados', signo(A0.cobrado), dP(A0.cobrado, A1.cobrado, true) + ' vs mes ant.', '#0e7490')}${kpi('Gastos', signo(A0.gastos), dP(A0.gastos, A1.gastos, false) + ' vs mes ant.', '#b91c1c')}
+    ${kpi('Utilidad', signo(A0.util), dP(A0.util, A1.util, true) + ' vs mes ant.', A0.util >= 0 ? '#047857' : '#b91c1c')}${kpi('Por cobrar', signo(suma(A0.porCobrar)), A0.deudores + ' paciente(s) con saldo', '#b45309')}</div>
+  <div class="fila" style="margin-top:12px">
+    <div class="box an">${anillo(meta ? A0.cobrado / meta * 100 : 0, '#2a78d6', meta ? Math.round(A0.cobrado / meta * 100) + '%' : '—', meta ? 'de la meta' : 'sin meta', 92)}<div><b>Meta mensual</b><br>${meta ? `${esc(peso(A0.cobrado))} de ${esc(peso(meta))}<br>${A0.cobrado >= meta ? 'Meta cumplida' : 'Faltan ' + esc(peso(meta - A0.cobrado))}` : 'No se ha definido una meta.'}</div></div>
+    <div class="box an">${anillo(A0.tasaAsis, '#1baf7a', A0.asis + A0.noAsis ? A0.tasaAsis + '%' : '—', 'asistencia', 92)}<div><b>Asistencia</b><br>${A0.asis} sesiones atendidas · ${A0.noAsis} inasistencias${A0.cancel ? ' · ' + A0.cancel + ' canceladas' : ''}<br>Cobradas: ${A0.tasaCobro}%</div></div></div>
+  <h2>Pacientes y productividad</h2>
+  <div class="ks">${kpi('Pacientes atendidos', A0.atendidos, (A0.atendidos - A1.atendidos >= 0 ? '+' : '') + (A0.atendidos - A1.atendidos) + ' vs mes ant.')}${kpi('Pacientes nuevos', A0.nuevos, '')}
+    ${kpi('Valor promedio por sesión', esc(peso(A0.prom)), dP(A0.prom, A1.prom, true) + ' vs mes ant.')}${kpi('Ingreso por paciente', esc(peso(A0.atendidos ? Math.round(A0.cobrado / A0.atendidos) : 0)), '')}</div>
+  <h2>Evolución · últimos 6 meses</h2>
+  <div class="box">${grafico6m(meses, m)}<div class="ley"><span><i style="background:#2a78d6"></i>Ingresos</span><span><i style="background:#eb6834"></i>Gastos</span><span><i style="background:#0f172a;height:3px;vertical-align:3px"></i>Utilidad</span></div>
+  <table style="margin-top:10px"><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Utilidad</th><th>Sesiones</th><th>Asistencia</th></tr>
+  ${meses.map(r => `<tr class="${r.ym === m ? 'on' : ''}"><td>${esc(nombreMes(r.ym))}</td><td>${esc(peso(r.ing))}</td><td>${esc(peso(r.gas))}</td><td>${esc(signo(r.ing - r.gas))}</td><td>${r.x.asis}</td><td>${r.x.asis + r.x.noAsis ? r.x.tasaAsis + '%' : '—'}</td></tr>`).join('')}
+  <tr><td><b>Total semestre</b></td><td><b>${esc(peso(meses.reduce((a, r) => a + r.ing, 0)))}</b></td><td><b>${esc(peso(meses.reduce((a, r) => a + r.gas, 0)))}</b></td><td><b>${esc(signo(meses.reduce((a, r) => a + r.ing - r.gas, 0)))}</b></td><td><b>${meses.reduce((a, r) => a + r.x.asis, 0)}</b></td><td></td></tr></table></div>
+  <div class="fila" style="margin-top:12px"><div class="box"><b>Ingresos por servicio</b>${dona(A0.porServ, 'Sin ingresos')}</div><div class="box"><b>Por medio de pago</b>${dona(A0.porMet, 'Sin pagos')}</div></div>
+  ${Object.keys(gastosCat).length ? `<div class="box" style="margin-top:12px"><b>Gastos por categoría</b>${dona(gastosCat, '')}</div>` : ''}
+  <h2>Conclusiones</h2><div class="box">${C.length ? `<ul>${C.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : 'Sin movimientos suficientes para generar conclusiones.'}</div>
+  <div class="pie">Informe financiero agregado. No incluye nombres ni datos de pacientes (Ley 1581 de 2012). Ingresos = sesiones y paquetes marcados como pagados en el mes. Generado con Consulta LV · LV Studio.</div>
+  </body></html>`);
+  w.document.close();
 }
 
 /* --- TABLERO DE FINANZAS: cálculos y gráficos (SVG, sin librerías) --- */
@@ -3307,6 +3365,7 @@ function dona(obj, vacio){
 function grafico6m(meses, sel){
   const W = 320, H = 170, pl = 6, pr = 6, pt = 14, pb = 22, iw = W - pl - pr, ih = H - pt - pb;
   const vals = meses.flatMap(x => [x.ing, x.gas, x.ing - x.gas]), mx = Math.max(1, ...vals), mn = Math.min(0, ...vals);
+  if (!vals.some(v => v)) return `<div class="empty" style="padding:22px">Aún no hay ingresos ni gastos registrados en estos 6 meses.<br>Cuando marques sesiones como pagadas aparecerán aquí.</div>`;
   const Y = v => pt + (mx - v) / (mx - mn) * ih, y0 = Y(0), cw = iw / meses.length, bw = Math.min(16, cw * 0.3);
   let g = `<line x1="${pl}" x2="${W - pr}" y1="${y0}" y2="${y0}" stroke="#cbd5e1" stroke-width="1"/>`;
   let etq = '';
