@@ -234,7 +234,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.20';
+const VERSION = '3.21';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -643,7 +643,46 @@ async function abrirPanel(){
   S.vista = 'inicio';
   pintarPanel();
   if ('terminos_at' in S.prof && (!S.prof.terminos_at || S.prof.terminos_version !== TERMINOS_V)) setTimeout(pedirTerminos, 500);
-  else if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 600);
+  else setTimeout(siguientePasoInicio, 600);
+}
+function siguientePasoInicio(){
+  if (perfilIncompleto()) configInicial();
+  else if (debeVerBienvenida()) mostrarBienvenida(0);
+}
+function perfilIncompleto(){ const p = S.prof || {}; return !(p.nombre && p.nombre.trim().length >= 3 && p.slug && soloDigitos(p.whatsapp || '').length >= 10 && p.ciudad); }
+function slugDe(t){ return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 34); }
+/* --- CONFIGURACIÓN INICIAL OBLIGATORIA (primer ingreso) --- */
+function configInicial(){
+  const p = S.prof;
+  abrirModal(`<div style="text-align:center"><div style="font-size:46px">🩺</div><h3 style="font-size:20px;margin:6px 0">Configura tu consultorio</h3>
+  <p class="sub" style="margin-top:0">Solo 1 minuto. Estos datos aparecen en tu página de reservas y en los recordatorios a tus pacientes.</p></div>
+  <label>Nombre completo *</label><input id="ci-nom" maxlength="80" autocomplete="name" value="${esc(p.nombre || '')}" placeholder="Ej: Laura Martínez Ríos" oninput="if(!CI.slugTocado)$('ci-slug').value=slugDe(this.value);$('ci-prev').textContent=$('ci-slug').value||'tu-nombre'">
+  <div class="fila"><div><label>Título</label><input id="ci-tit" maxlength="80" value="${esc(p.titulo || 'Psicólogo(a)')}"></div><div><label>Tarjeta profesional</label><input id="ci-tp" maxlength="30" value="${esc(p.tarjeta_profesional || '')}" placeholder="Opcional"></div></div>
+  <div class="fila"><div><label>Ciudad *</label><input id="ci-ciu" maxlength="60" value="${esc(p.ciudad || '')}" placeholder="Ej: Palmira"></div><div><label>WhatsApp *</label><input id="ci-wa" type="tel" inputmode="numeric" maxlength="15" value="${esc(p.whatsapp || '')}" placeholder="3001234567"></div></div>
+  <label>Tu enlace de reservas *</label><input id="ci-slug" maxlength="40" value="${esc(p.slug || slugDe(p.nombre))}" oninput="CI.slugTocado=true;this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'');$('ci-prev').textContent=this.value||'tu-nombre'">
+  <p class="mini" style="word-break:break-all">${esc(location.origin + location.pathname)}?p=<b id="ci-prev">${esc(p.slug || slugDe(p.nombre) || 'tu-nombre')}</b></p>
+  <button class="btn full" id="ci-btn" onclick="guardarConfigInicial()">Guardar y empezar</button>
+  <p class="mini" style="text-align:center">Luego podrás completar tu foto, servicios y horario desde Inicio.</p>`);
+  CI.slugTocado = !!p.slug;
+  const x = document.querySelector('#modal-c .sheet-x'); if (x) x.remove();
+}
+const CI = { slugTocado: false };
+async function guardarConfigInicial(){
+  const d = { nombre: $('ci-nom').value.trim().replace(/\s+/g, ' '), titulo: $('ci-tit').value.trim(), tarjeta_profesional: $('ci-tp').value.trim(),
+    ciudad: $('ci-ciu').value.trim(), whatsapp: soloDigitos($('ci-wa').value), slug: $('ci-slug').value.trim().replace(/^-+|-+$/g, '') };
+  if (d.nombre.length < 3 || !/\s/.test(d.nombre)) { toast('Escribe tu nombre y apellido', true); $('ci-nom').focus(); return; }
+  if (d.ciudad.length < 3) { toast('Escribe tu ciudad', true); $('ci-ciu').focus(); return; }
+  if (d.whatsapp.length < 10) { toast('Escribe tu WhatsApp de 10 dígitos', true); $('ci-wa').focus(); return; }
+  if (!d.slug) d.slug = slugDe(d.nombre);
+  if (!/^[a-z0-9-]{3,40}$/.test(d.slug)) { toast('El enlace debe tener entre 3 y 40 letras, números o guiones', true); return; }
+  const b = $('ci-btn'); b.disabled = true; b.textContent = 'Guardando…';
+  let r = await sb.from('profesionales').update(d).eq('id', S.prof.id).select().single();
+  if (r.error && /duplicate key|23505/i.test(r.error.message || '') && !CI.slugTocado) {
+    d.slug = (d.slug.slice(0, 34) + '-' + Math.floor(100 + Math.random() * 900)); r = await sb.from('profesionales').update(d).eq('id', S.prof.id).select().single();
+  }
+  if (r.error) { b.disabled = false; b.textContent = 'Guardar y empezar'; toast(mensajeError(r.error), true); return; }
+  S.prof = r.data; cerrarModal(); toast('¡Listo, ' + d.nombre.split(' ')[0] + '! Tu consultorio está creado ✅'); pintarPanel();
+  if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 500);
 }
 
 function diasRestantes(){ return Math.round((Date.parse(S.prof.activo_hasta) - Date.parse(hoyYMD())) / 864e5); }
@@ -715,7 +754,8 @@ async function vistaInicio(){
     [!!fotoSegura(p.foto_url), 'Sube tu foto profesional', "irA('perfil')"],
     [(sv.data || []).length > 0, 'Crea al menos un servicio', "irA('servicios')"],
     [S.prof.horario_auto === true || (di.data || []).length > 0, 'Define tu horario de atención', "irA('horarios')"],
-    [!!ll.data, 'Protege tus historias con tu clave clínica', "irA('pacientes')"]];
+    [!!ll.data, 'Protege tus historias con tu clave clínica', "irA('pacientes')"],
+    [nPac > 0, 'Registra tu primer paciente', "irA('pacientes');setTimeout(()=>formPaciente(),400)"]];
   const hechos = pasos.filter(x => x[0]).length;
   let h = '';
   if (hechos < pasos.length) h += `<div class="card"><div class="row"><h3 class="grow" style="margin:0">🚀 Pon a punto tu consultorio</h3><b style="color:var(--pri)">${hechos}/${pasos.length}</b></div>
@@ -3130,7 +3170,7 @@ async function aceptarTerminos(){
   $('tyc-b').disabled = true;
   const { data, error } = await sb.from('profesionales').update({ terminos_at: new Date().toISOString(), terminos_version: TERMINOS_V }).eq('id', S.prof.id).select().single();
   if (error) { $('tyc-b').disabled = false; toast(mensajeError(error), true); return; }
-  S.prof = data; cerrarModal(); toast('Gracias ✅'); if (debeVerBienvenida()) setTimeout(() => mostrarBienvenida(0), 400);
+  S.prof = data; cerrarModal(); toast('Gracias ✅'); setTimeout(siguientePasoInicio, 400);
 }
 
 /* --- CALENDARIO (Google y .ics) --- */
