@@ -218,7 +218,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.14';
+const VERSION = '3.15';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -928,10 +928,24 @@ function detalleCita(id){
     ${c.serie ? `<button class="btn sm red" style="margin-top:6px" onclick="cancelarSerie('${c.serie}','${c.inicio}')">Cancelar esta y las siguientes de la serie</button>` : ''}` : ''}
   <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`);
 }
+function mensajeCita(c, tipo, antes){
+  const pa = c.pacientes || {}, p = S.prof || {}, serv = (c.servicios && c.servicios.nombre) || 'psicología';
+  const cuando = iso => `${fecha(iso, { weekday: 'long', day: 'numeric', month: 'long' })} · ${hora(iso)}`;
+  const virtual = /^https:\/\//.test(c.enlace_virtual || '');
+  const L = [`Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''} 👋`, ''];
+  L.push(tipo === 'reprogramada' ? `🔄 *Motivo:* tu cita de ${serv} fue reprogramada (antes: ${cuando(antes)})` : `📌 *Motivo:* recordatorio de tu cita de ${serv}`);
+  L.push(`📅 *Fecha y hora:* ${cuando(c.inicio)}`);
+  if (virtual) L.push(`💻 *Lugar:* cita virtual — ${c.enlace_virtual}`);
+  else if (p.direccion) L.push(`📍 *Dirección:* ${p.direccion}${p.ciudad ? ', ' + p.ciudad : ''}`);
+  if (p.nombre) L.push(`👤 *Profesional:* ${p.nombre}${p.titulo ? ' · ' + p.titulo : ''}`);
+  if (p.whatsapp || p.telefono) L.push(`📱 *Contacto:* ${p.whatsapp || p.telefono}`);
+  if (p.email) L.push(`✉️ *Correo:* ${p.email}`);
+  if (c.token_paciente) L.push(`🔗 *Confirma, cancela o cambia tu cita:* ${urlPublica('?c=' + c.token_paciente)}`);
+  if (c.valor && !c.pagado) { const t = textoPago(); if (t) L.push('', '💵 ' + t.trim()); }
+  return L.join('\n');
+}
 function enlaceRecordatorio(c){
-  const pa = c.pacientes || {}, p = S.prof;
-  const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}${c.token_paciente ? 'Confirma, cancela o cambia la hora aquí: ' + urlPublica('?c=' + c.token_paciente) + ' . ' : '¿Me confirmas tu asistencia? '}${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
-  return 'https://wa.me/' + waNum(pa.telefono) + '?text=' + encodeURIComponent(t);
+  return 'https://wa.me/' + waNum((c.pacientes || {}).telefono) + '?text=' + encodeURIComponent(mensajeCita(c, 'recordatorio'));
 }
 /* --- DICTADO POR VOZ EN NOTAS CLÍNICAS --- */
 const VOZ = { rec: null, ta: null, btn: null, base: '' };
@@ -1007,7 +1021,7 @@ async function guardarReprogramar(id){
   cerrarModal(); toast('Cita reprogramada 🔄');
   if (avisar) {
     const pa = c.pacientes || {};
-    const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} del ${fecha(antes, { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hora(antes)} quedó reprogramada para el ${fecha(ini.toISOString(), { weekday: 'long', day: 'numeric', month: 'long' })} a las ${hora(ini.toISOString())}. ${c.token_paciente ? 'Puedes confirmar o cambiarla aquí: ' + urlPublica('?c=' + c.token_paciente) + ' ' : ''}¡Te espero!`;
+    const t = mensajeCita(Object.assign({}, c, { inicio: ini.toISOString(), fin: fin.toISOString() }), 'reprogramada', antes);
     setTimeout(() => abrirModal(`<h3>🔄 Cita reprogramada</h3><p style="font-size:14px">Nueva fecha: <b>${esc(fecha(ini.toISOString(), { weekday: 'long', day: 'numeric', month: 'long' }))} · ${esc(hora(ini.toISOString()))}</b></p>
       <a class="btn full" style="background:#16a34a" target="_blank" rel="noopener" href="https://wa.me/${waNum(pa.telefono)}?text=${encodeURIComponent(t)}" onclick="setTimeout(cerrarModal,300)">💬 Avisar por WhatsApp</a>
       <button class="btn full ghost" onclick="cerrarModal()">Cerrar</button>`), 250);
