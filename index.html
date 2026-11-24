@@ -202,6 +202,9 @@ body.con-modal{overflow:hidden}
 .pie a{color:var(--pri)}
 .dia{font-weight:700;font-size:14px;margin:14px 0 6px}
 .franja{display:flex;align-items:center;justify-content:space-between;background:#f8fafc;border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:14px}
+.mic{display:inline-flex;align-items:center;gap:6px;margin:6px 0 2px;background:#e0f2fe;color:var(--pri);border:0;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.mic.on{background:#fee2e2;color:var(--bad);animation:micp 1.2s infinite}
+@keyframes micp{50%{box-shadow:0 0 0 6px rgba(220,38,38,.15)}}
 </style>
 </head>
 <body>
@@ -215,7 +218,7 @@ const SB_URL = 'https://sinxqgtdvoqjypgytrce.supabase.co';
 const SB_KEY = 'sb_publishable_zrc5qqxNfy9X_LUef2HU4Q_5WKGZZgD';
 const TZ = 'America/Bogota';
 const INACTIVIDAD_MIN = 15;
-const VERSION = '3.13';
+const VERSION = '3.14';
 
 const sb = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const app = document.getElementById('app');
@@ -232,6 +235,7 @@ function abrirModal(html){
 }
 function cerrarModal(){
   if (!$('modal').classList.contains('on')) return;
+  if (typeof VOZ !== 'undefined' && VOZ.rec) VOZ.rec.stop();
   $('modal').classList.remove('on'); document.body.classList.remove('con-modal');
   setTimeout(() => { if (history.state && history.state.modal) { NAV.ignorar = true; history.back(); } }, 0);
 }
@@ -929,6 +933,54 @@ function enlaceRecordatorio(c){
   const t = `Hola ${pa.nombres ? pa.nombres.split(' ')[0] : ''}, te recuerdo tu cita de ${(c.servicios && c.servicios.nombre) || 'psicología'} el ${fecha(c.inicio,{weekday:'long',day:'numeric',month:'long'})} a las ${hora(c.inicio)}. ${/^https:\/\//.test(c.enlace_virtual || '') ? 'Enlace de la sesión: ' + c.enlace_virtual + ' . ' : ''}${c.token_paciente ? 'Confirma, cancela o cambia la hora aquí: ' + urlPublica('?c=' + c.token_paciente) + ' . ' : '¿Me confirmas tu asistencia? '}${c.valor && !c.pagado ? textoPago() : ''}— ${p.nombre}`;
   return 'https://wa.me/' + waNum(pa.telefono) + '?text=' + encodeURIComponent(t);
 }
+/* --- DICTADO POR VOZ EN NOTAS CLÍNICAS --- */
+const VOZ = { rec: null, ta: null, btn: null, base: '' };
+const VOZ_SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const VOZ_CAMPOS = /^(nt-|hc-|in-|es-obs$|ex-o$)/;
+function vozLimpiar(t){
+  return t.replace(/\s*\b(nuevo párrafo|punto y aparte)\b\s*/gi, '.\n\n').replace(/\s*\b(nueva línea|siguiente línea)\b\s*/gi, '\n')
+    .replace(/\s*\bpunto y coma\b/gi, ';').replace(/\s*\bdos puntos\b/gi, ':').replace(/\s*\bpunto\b/gi, '.').replace(/\s*\bcoma\b/gi, ',')
+    .replace(/\s*\bsigno de pregunta\b/gi, '?').replace(/\.{2,}/g, '.').replace(/([.?!]\s+|\n)([a-záéíóúñ])/g, (m, a, b) => a + b.toUpperCase());
+}
+function vozPonerBotones(root){
+  if (!VOZ_SR) return;
+  (root || document).querySelectorAll('textarea').forEach(ta => {
+    if (!ta.id || !VOZ_CAMPOS.test(ta.id) || ta.dataset.mic) return;
+    ta.dataset.mic = '1';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'mic'; b.innerHTML = '🎙️ Dictar';
+    b.onclick = () => vozAlternar(ta, b);
+    ta.insertAdjacentElement('afterend', b);
+  });
+}
+function vozAviso(){ try { return localStorage.getItem('clv_voz_ok') === '1'; } catch (e) { return false; } }
+function vozAlternar(ta, b){
+  if (VOZ.rec && VOZ.ta === ta) { VOZ.rec.stop(); return; }
+  if (VOZ.rec) VOZ.rec.stop();
+  if (!vozAviso()) {
+    if (!confirm('🎙️ Dictado por voz\n\nEl audio lo convierte en texto el servicio de voz de tu navegador (Google en Android/Chrome, Apple en iPhone). Solo el texto queda en la nota, y se cifra al guardar.\n\nRecomendación: no digas nombres completos, documentos ni direcciones mientras dictas.\n\n¿Activar el dictado?')) return;
+    try { localStorage.setItem('clv_voz_ok', '1'); } catch (e) {}
+  }
+  const r = new VOZ_SR(); r.lang = 'es-CO'; r.continuous = true; r.interimResults = true;
+  VOZ.rec = r; VOZ.ta = ta; VOZ.btn = b;
+  VOZ.base = ta.value && !/\s$/.test(ta.value) ? ta.value + ' ' : ta.value;
+  r.onresult = e => {
+    let fin = '', tmp = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fin += t + ' '; else tmp += t; }
+    if (fin) { let t = vozLimpiar(fin.trim()); if (!VOZ.base.trim() || /[.?!:\n]\s*$/.test(VOZ.base)) t = t.charAt(0).toUpperCase() + t.slice(1); VOZ.base += t + (/\n$/.test(t) ? '' : ' '); }
+    ta.value = (VOZ.base + tmp).slice(0, +ta.maxLength > 0 ? +ta.maxLength : 6000);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  r.onerror = e => {
+    const m = { 'not-allowed': 'Permite el micrófono para dictar (ajustes del navegador)', 'service-not-allowed': 'Tu navegador no permite dictar aquí. Usa el micrófono del teclado', 'no-speech': 'No se escuchó nada. Toca de nuevo y habla', network: 'El dictado necesita internet', 'audio-capture': 'No se encontró el micrófono' }[e.error];
+    if (m) toast(m, true);
+  };
+  r.onend = () => { if (VOZ.rec !== r) return; b.classList.remove('on'); b.innerHTML = '🎙️ Dictar'; ta.value = ta.value.replace(/ +$/, ''); VOZ.rec = null; VOZ.ta = null; };
+  try { r.start(); b.classList.add('on'); b.innerHTML = '⏹️ Detener dictado'; ta.focus(); }
+  catch (e) { VOZ.rec = null; toast('No se pudo iniciar el dictado', true); }
+}
+if (VOZ_SR) new MutationObserver(ms => { if (ms.some(m => m.addedNodes.length)) vozPonerBotones(); }).observe(document.body, { childList: true, subtree: true });
+document.addEventListener('visibilitychange', () => { if (document.hidden && VOZ.rec) VOZ.rec.stop(); });
+
 /* --- REPROGRAMAR (profesional) --- */
 function formReprogramar(id){
   const c = A.citas.find(x => x.id === id); if (!c) return;
@@ -1446,7 +1498,7 @@ async function formNota(id, o){
   NF.id = ''; NF.campos = d.campos ? d.campos.map(f => f[0]) : null; NF.plantilla = d.plantilla || '';
   abrirModal(`<h3>${o.aclara ? '➕ Nota aclaratoria' : n ? 'Editar nota' : 'Nueva nota'} · ${esc(P.actual.nombres)}</h3>
   ${o.aclara && base ? `<div class="aviso warn" style="font-size:13px">Aclara ${esHC(base) ? 'la <b>historia clínica de ingreso</b>' : 'la nota del <b>' + esc(fecha(base.fecha + 'T12:00:00Z', { day: 'numeric', month: 'long', year: 'numeric' })) + '</b>'}. El registro original no se modifica (Res. 1995 de 1999): esta aclaración queda con su propia fecha y firma.</div>` : ''}
-  <div class="aviso info" style="font-size:13px">🎙️ Puedes <b>dictar</b>: toca el micrófono de tu teclado dentro de cada campo. 🔒 La nota se cifra antes de salir de tu celular.</div>
+  <div class="aviso info" style="font-size:13px">🎙️ Puedes <b>dictar</b> con el botón «Dictar» de cada campo. Di «punto», «coma» o «nuevo párrafo» para puntuar. 🔒 La nota se cifra antes de salir de tu celular.</div>
   <div class="fila"><div><label>Fecha</label><input id="nt-fecha" type="date" value="${esc((n && n.fecha) || o.fecha || hoyYMD())}"></div>
   <div><label>Tipo</label><select id="nt-tipo">${Object.entries(TIPOS_NOTA).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div></div>
   ${pls.length ? `<label>Formato</label><select id="nt-pl" onchange="elegirPlantilla(this.value)"><option value="">Estándar</option>${pls.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}</select>` : ''}
@@ -1933,7 +1985,7 @@ function formHistoria(id, o){
   if (id && notaBloqueada(P.notas.find(x => x.id === id))) { toast('La historia ya está firmada. Agrega una nota aclaratoria', true); return formNota(null, { aclara: id }); } const n = P.notas.find(x => x.id === id), d = (n && n.d && n.d.hc) || {}, p = P.actual;
   NF.citaId = o.citaId || (n && n.cita_id) || null;
   abrirModal(`<h3>📋 Historia clínica · ${esc(p.nombres)}</h3>
-  <div class="aviso info" style="font-size:13px">Llena lo que aplique; puedes guardar un <b>borrador</b> y completarlo después. 🎙️ Puedes dictar con el micrófono del teclado. 🔒 Todo se cifra en tu dispositivo.</div>
+  <div class="aviso info" style="font-size:13px">Llena lo que aplique; puedes guardar un <b>borrador</b> y completarlo después. 🎙️ Puedes dictar con el botón «Dictar» de cada campo. 🔒 Todo se cifra en tu dispositivo.</div>
   <div class="card" style="background:#f8fafc;font-size:13px;line-height:1.6"><b>${esc(p.nombres)}</b> · CC ${esc(p.documento)}${p.fecha_nacimiento ? ' · ' + esc(p.fecha_nacimiento) + ' (' + edad(p.fecha_nacimiento) + ')' : ''}<br>
     📱 ${esc(p.telefono || '—')} · 🆘 ${esc(p.contacto_emergencia || 'sin contacto de emergencia')}<br>
     Consentimiento: ${p.consentimiento_at ? '✅ registrado' : '<b style="color:var(--bad)">sin registrar</b>'} · Autorización de datos: ${p.autorizacion_datos_at ? '✅' : '<b style="color:var(--bad)">sin registrar</b>'}</div>
