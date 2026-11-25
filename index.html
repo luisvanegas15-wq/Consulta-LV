@@ -2379,7 +2379,7 @@ function elegirColor(c){ $('p-color').value = c; document.querySelectorAll('.col
    v9 · SUSCRIPCIÓN Y ADMINISTRACIÓN
    ========================================================= */
 const PLANES_BASE = [{ id: 'mensual', nombre: 'Mensual', meses: 1, valor: 39000 }, { id: 'semestral', nombre: 'Semestral', meses: 6, valor: 199000 }, { id: 'anual', nombre: 'Anual', meses: 12, valor: 349000 }];
-const WA_LV = '573202903722';
+const WA_LV = '573187179215';
 const pesos = n => '$' + Number(n || 0).toLocaleString('es-CO');
 function fechaCorta(ymd){ return new Date(ymd + 'T12:00:00Z').toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }); }
 function avisoSuscripcion(){
@@ -3229,7 +3229,7 @@ function vistaMas(){
   ${G.map(g => `<div class="mas-g">${g[0]}</div><div class="menu-mas">${g[1].map(btn).join('')}</div>`).join('')}
   <div class="card" style="margin-top:14px"><b>🔎 Directorio de psicólogos</b><p class="mini" style="margin-top:4px">Los pacientes pueden encontrarte por tema, ciudad o modalidad. Actívalo en tu Perfil.</p>
   <a class="btn sm ghost" target="_blank" rel="noopener" href="${esc(urlPublica('?dir=1'))}">Ver directorio</a></div>
-  <p class="mini" style="text-align:center;margin:16px 0 4px">Consulta LV v${VERSION} · ¿Dudas? <a target="_blank" rel="noopener" href="https://wa.me/573202903722?text=${encodeURIComponent('Hola LV Studio, tengo una duda con Consulta LV')}">Escríbenos por WhatsApp</a></p>`;
+  <p class="mini" style="text-align:center;margin:16px 0 4px">Consulta LV v${VERSION} · ¿Dudas? <a target="_blank" rel="noopener" href="https://wa.me/573187179215?text=${encodeURIComponent('Hola LV Studio, tengo una duda con Consulta LV')}">Escríbenos por WhatsApp</a></p>`;
   const pon = (k, html) => { const s = $('mb-' + k); if (s && html) s.innerHTML = html; };
   Promise.all([sb.from('lista_espera').select('id', { count: 'exact', head: true }).eq('estado', 'esperando'),
     sb.from('solicitudes_habeas').select('id', { count: 'exact', head: true }).neq('estado', 'respondida')]).then(([e, h]) => {
